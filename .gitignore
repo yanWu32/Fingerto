@@ -1,0 +1,60 @@
+# ---------- Python ----------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+
+# ---------- 虚拟环境 ----------
+.venv/
+venv/
+env/
+ENV/
+
+# ---------- 数据与模型（体积大，不入库） ----------
+data/*
+!data/.gitkeep
+*.npz
+*.npy
+*.pt
+*.pth
+*.ckpt
+*.onnx
+runs/
+checkpoints/
+outputs/
+logs/
+wandb/
+
+# ---------- 密钥与本地配置（绝不入库） ----------
+.env
+.env.*
+*.key
+configs/local.yaml
+secrets/
+
+# ---------- 媒体与缓存 ----------
+*.mp4
+*.avi
+*.mov
+*.mkv
+.DS_Store
+Thumbs.db
+
+# ---------- 编辑器 / 工具 ----------
+.vscode/
+.idea/
+*.swp
+.ipynb_checkpoints/
+
+# ---------- 测试与覆盖 ----------
+.pytest_cache/
+.coverage
+htmlcov/
+node_modules/
+node_modules.orig/
