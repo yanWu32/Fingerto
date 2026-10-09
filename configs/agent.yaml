@@ -1,0 +1,70 @@
+# 智能体层配置 — LLM 三步提示管线
+
+llm:
+  # provider: deepseek | qwen | local
+  provider: deepseek
+  model: deepseek-chat
+  # OpenAI 兼容端点（切换 provider 时自动替换）
+  endpoints:
+    deepseek: https://api.deepseek.com/v1
+    qwen: https://dashscope.aliyuncs.com/compatible-mode/v1
+    local: http://localhost:11434/v1
+  models:
+    deepseek: deepseek-chat
+    qwen: qwen-plus
+    local: qwen2.5:3b
+  # 生成参数
+  temperature: 0.3
+  max_tokens: 800
+  timeout: 30               # 秒
+  # 环境变量名（放 .env，不入库）
+  api_key_env:
+    deepseek: DEEPSEEK_API_KEY
+    qwen: DASHSCOPE_API_KEY
+    local: LOCAL_API_KEY
+
+# ---------- 三步提示管线 ----------
+pipeline:
+  # 是否启用完整三步；false 时跳过 Step1（用于消融 System B）
+  enable_step1_confirm: true
+  enable_step2_translate: true
+  enable_step3_decide: true
+
+# ---------- 置信度路由 ----------
+confidence:
+  # 高置信：直接翻译
+  high_threshold: 0.75
+  # 低置信：结合上下文推断；仍不确定则澄清
+  low_threshold: 0.6
+  # 低于此值直接要求澄清，不做推断
+  clarify_threshold: 0.4
+  max_clarify_rounds: 2     # 同一意图最多澄清轮数
+
+# ---------- 对话状态 ----------
+dialogue:
+  max_history: 10           # 保留最近 N 轮对话
+  max_context_turns: 5      # 送入 LLM 的上下文轮数
+  enable_coreference: true  # 指代消解
+  enable_correction: true   # 用户纠正处理
+
+# ---------- 缓存 ----------
+cache:
+  enabled: true
+  # 高频词/短语翻译缓存，降低延迟与 API 开销
+  max_size: 1000
+  ttl: 86400                # 秒
+  path: data/cache/agent_cache.json
+
+# ---------- 意图与任务 ----------
+intent:
+  types: [chat, query, command, clarify]
+  # 模拟智能家居可用动作（环境由 JSON 提供，无需真实硬件）
+  actions:
+    - turn_on_light
+    - turn_off_light
+    - turn_on_ac
+    - turn_off_ac
+    - open_window
+    - close_window
+    - open_curtain
+    - close_curtain

@@ -1,0 +1,59 @@
+# 消融实验配置 — System A/B/C/D 对比
+
+systems:
+  - id: A
+    name: 规则模板基线
+    use_llm: false
+    use_dialogue_state: false
+    desc: 识别 + 模板映射回复（无 LLM）
+  - id: B
+    name: LLM 无对话状态
+    use_llm: true
+    use_dialogue_state: false
+    desc: 识别 + LLM 翻译，单轮无状态
+  - id: C
+    name: LLM + 对话状态
+    use_llm: true
+    use_dialogue_state: true
+    desc: 完整三步管线 + 对话状态管理（本项目主方案）
+  - id: D
+    name: 本地微调小模型（可选）
+    use_llm: true
+    use_dialogue_state: true
+    provider: local
+    desc: 本地小模型替代云端 API，测延迟-精度权衡
+
+# ---------- 测试场景（5 类） ----------
+scenarios:
+  - id: isolated
+    name: 孤立词翻译
+    desc: 单个手语词 -> 自然语言
+  - id: low_confidence
+    name: 低置信度消歧
+    desc: 识别置信度低时的澄清行为
+  - id: coreference
+    name: 多轮指代消解
+    desc: 代词/省略的跨轮理解
+  - id: correction
+    name: 用户纠正
+    desc: 用户否定后系统能否修正
+  - id: ambiguity
+    name: 多义手势消歧
+    desc: 同一手势 + 不同环境 -> 不同意图
+
+# ---------- 评价指标 ----------
+metrics:
+  - bleu                # 翻译质量（BLEU-1..4，用 jieba 分词）
+  - rouge               # ROUGE-L
+  - intent_accuracy     # 意图分类准确率
+  - task_success_rate   # 对话完成率
+  - clarification_rate  # 澄清触发率
+  - latency             # 端到端延迟（手势结束 -> 回复，毫秒）
+
+# ---------- 运行 ----------
+run:
+  testset: data/testset/ablation.json
+  output_dir: outputs/ablation
+  repeats: 1
+  save_raw: true        # 保存每个样本的原始 LLM 输出，便于人工核查
+  seed: 42

@@ -1,15 +1,15 @@
 # Fingerto — 基于LLM智能体的手语对话系统
 #
-# 当前目标环境: Anaconda env "pytorch"
-#   E:\Program\anaconda\anaconda3\envs\pytorch\python.exe  (Python 3.8.20)
-#   torch 2.4.0+cu121 / RTX 4060 Laptop (CUDA 可用)
+# 当前目标环境: Anaconda env "fingerto"
+#   E:\Program\anaconda\anaconda3\envs\fingerto\python.exe  (Python 3.10.22)
+#   torch 2.5.1+cu121 / RTX 4060 Laptop (CUDA 可用)
 #
 # 安装:
 #   pip install -r requirements.txt
 # 国内网络可加镜像:
 #   pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
 
-# ---------- 已存在于 anaconda pytorch 环境（保留声明，便于复现） ----------
+# ---------- 核心（已确认安装） ----------
 torch>=2.0
 torchvision>=0.15
 numpy>=1.24
@@ -22,9 +22,11 @@ pillow>=9.0
 requests>=2.28
 
 # ---------- 感知层 ----------
-opencv-python>=4.8
-# Python 3.8 环境下 mediapipe 需选兼容版本（>=0.9, <=0.10.x）
-mediapipe>=0.9
+# 注意: 只装 opencv-contrib-python，不要同时装 opencv-python（两者会互相覆盖）
+opencv-contrib-python>=4.8
+# MediaPipe 锁定 0.10.x —— 提供 mp.solutions 经典 API，兼容教程/论文代码
+# 不要用 1.x：1.x 移除了 mp.solutions，只有 mp.tasks，需额外下载 .task 模型
+mediapipe==0.10.14
 
 # ---------- 智能体层（LLM API，OpenAI 兼容端点统一封装） ----------
 openai>=1.0
