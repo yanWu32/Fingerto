@@ -18,31 +18,26 @@ mediapipe:
   max_num_hands: 2
   model_complexity: 1     # holistic: 0=轻量 1=标准 2=高精度
 
-# ---------- 骨架定义（27 点） ----------
+# ---------- 骨架定义（27 点 = 21 手 + 6 上身） ----------
+# 说明：开题报告/方案确定书早先写过"双手各21 + 上半身6 = 48"，
+#       但与层间契约 (T,27,3) 冲突。本实现采用契约口径：
+#       主手 21 点（检测左手优先，否则右手）+ 上身 6 点 = 27。
+#       若后续需要双手，增加 right_hand 布局项即可扩展为 48。
 skeleton:
   num_points: 27
-  # 双手各 21 点（MediaPipe Hands 标准 21 点）
-  left_hand: 21           # 索引 0-20
-  right_hand: 21          # 索引 21-41 -> 实际按下面 layout 映射
-  # 上半身 6 点（Pose 关键点子集）
-  pose_points:
-    - nose                # 0
-    - left_shoulder       # 11
-    - right_shoulder      # 12
-    - left_elbow          # 13
-    - right_elbow         # 14
-    - left_wrist          # 15
-  # 最终 27 点布局
+  # 上身 6 点对应的 MediaPipe Pose 索引
+  pose_indices: [0, 11, 12, 13, 14, 15]   # nose, L肩, R肩, L肘, R肘, L腕
+  # 27 点最终布局（offset 连续）
   layout:
-    - name: left_hand
+    - name: hand
       count: 21
       offset: 0
     - name: pose
       count: 6
       offset: 21
-    - name: right_hand
-      count: 0             # 双手方案时为 0，单手+姿态时调整
-      offset: 27
+  # 缺失关键点处理
+  swap_handedness: true    # 镜像采集时把 MediaPipe 的 Left/Right 对调为真实手性
+  max_missing_ratio: 0.3   # 单帧缺失（全 0）超过该比例则丢弃该帧
 
 # ---------- 归一化 ----------
 normalize:
