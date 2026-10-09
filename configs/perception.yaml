@@ -1,0 +1,62 @@
+# 感知层配置 — OpenCV + MediaPipe 关键点提取
+# 输出：27 点骨架序列 (T, 27, 3)
+
+# ---------- 视频采集 ----------
+camera:
+  device_id: 0            # 摄像头索引
+  width: 640
+  height: 480
+  fps: 30
+
+# ---------- MediaPipe ----------
+mediapipe:
+  # holistic: 一次推理同时出手部+姿态（推荐，对应 27 点方案）
+  # hands+pose: 两个模块分别推理
+  mode: holistic
+  min_detection_confidence: 0.5
+  min_tracking_confidence: 0.5
+  max_num_hands: 2
+  model_complexity: 1     # holistic: 0=轻量 1=标准 2=高精度
+
+# ---------- 骨架定义（27 点） ----------
+skeleton:
+  num_points: 27
+  # 双手各 21 点（MediaPipe Hands 标准 21 点）
+  left_hand: 21           # 索引 0-20
+  right_hand: 21          # 索引 21-41 -> 实际按下面 layout 映射
+  # 上半身 6 点（Pose 关键点子集）
+  pose_points:
+    - nose                # 0
+    - left_shoulder       # 11
+    - right_shoulder      # 12
+    - left_elbow          # 13
+    - right_elbow         # 14
+    - left_wrist          # 15
+  # 最终 27 点布局
+  layout:
+    - name: left_hand
+      count: 21
+      offset: 0
+    - name: pose
+      count: 6
+      offset: 21
+    - name: right_hand
+      count: 0             # 双手方案时为 0，单手+姿态时调整
+      offset: 27
+
+# ---------- 归一化 ----------
+normalize:
+  # 相对坐标：以身体中心/手腕为原点，消除位置与尺度影响
+  method: relative        # relative | absolute | bbox
+  # 缺失关键点处理
+  interpolation: linear   # linear | kinematic
+  max_missing_ratio: 0.3  # 单帧缺失超过该比例则丢弃该帧
+
+# ---------- 数据增强（训练时） ----------
+augment:
+  random_rotate: true
+  rotate_range: [-15, 15]  # 度
+  random_scale: true
+  scale_range: [0.9, 1.1]
+  random_shift: true
+  shift_range: [-0.05, 0.05]

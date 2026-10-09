@@ -1,0 +1,46 @@
+# 识别层配置 — 骨骼序列 -> gloss 序列
+
+model:
+  name: stgcn               # stgcn | transformer_gcn | cnn_lstm
+  num_classes: 1000         # 词汇量（按实际数据集调整）
+  in_channels: 3            # (x, y, z)
+  num_points: 27            # 骨架点数
+  # ST-GCN
+  stgcn:
+    graph: spatial          # 骨架图连接方式
+    hidden_channels: [64, 128, 256]
+    kernel_size: [3, 3]
+    dropout: 0.5
+  # Transformer+GCN（消融对比）
+  transformer_gcn:
+    d_model: 128
+    nhead: 8
+    num_layers: 4
+    dropout: 0.1
+  # CNN+LSTM（消融对比 / 轻量基线）
+  cnn_lstm:
+    cnn_channels: [32, 64]
+    lstm_hidden: 128
+    lstm_layers: 2
+
+train:
+  batch_size: 32
+  epochs: 100
+  lr: 0.001
+  weight_decay: 0.0001
+  optimizer: adam
+  scheduler: cosine
+  num_workers: 4
+  seed: 42
+  device: cuda              # cuda | cpu
+  amp: true                 # 混合精度（RTX 4060 支持）
+
+data:
+  dataset: isw1000          # isw1000 | csl | selfcollected
+  modality: skeleton        # 仅骨骼模态
+  max_frames: 120           # 统一序列长度（截断/补零）
+  pad_mode: last            # last | zero
+
+eval:
+  top_k: [1, 5]
+  measure_latency: true     # 记录单样本推理延迟

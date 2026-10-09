@@ -102,19 +102,27 @@ Fingerto/
 
 ## 六、运行环境
 
-推荐使用 Anaconda 环境 `pytorch`：
+使用 Anaconda 环境 **`fingerto`**：
 
-- 解释器：`E:\Program\anaconda\anaconda3\envs\pytorch\python.exe`（Python 3.8.20）
-- 已具备：**torch 2.4.0+cu121**、torchvision 0.19.0、opencv-python 4.13.0、
-  numpy / pandas / scikit-learn / matplotlib / tqdm / pyyaml / pillow / requests
+- 解释器：`E:\Program\anaconda\anaconda3\envs\fingerto\python.exe`（**Python 3.10.22**）
+- 核心：**torch 2.5.1+cu121**、torchvision 0.20.1+cu121、
+  **opencv-contrib-python 4.10.0**、**mediapipe 0.10.14**（含 `mp.solutions` 经典 API）、
+  gradio 6.30.0、openai 3.26.1、numpy 2.2.6
 - GPU：**NVIDIA GeForce RTX 4060 Laptop GPU**，CUDA 可用
-- 需补装：`mediapipe`、`gradio`、`openai`
+
+> ⚠️ **MediaPipe 必须锁 0.10.x**：1.x 移除了 `mp.solutions`，仅保留 `mp.tasks`，
+> 与本项目及绝大多数手语文献代码不兼容。
+> ⚠️ **只装 `opencv-contrib-python`，不要同时装 `opencv-python`**：
+> 两者共用 `cv2` 目录，卸载其一会连带删除 `cv2.pyd`。
 
 环境自检：
 
 ```bash
-python tools/check_env.py
+python tools/check_env.py          # 依赖与 CUDA 检查
+python tools/verify_perception.py  # MediaPipe 感知层验证
 ```
+
+详细配置步骤见 `docs/环境配置指南.md`，故障修复见 `docs/环境修复步骤.md`。
 
 ## 七、数据集策略
 
@@ -143,6 +151,7 @@ python tools/check_env.py
 
 - [x] 工程脚手架（目录结构 / requirements / .gitignore / 环境自检脚本）
 - [x] 方案确定书
+- [x] **运行环境配置**（Anaconda `fingerto` / Python 3.10 / torch+CUDA / MediaPipe 0.10.14）
 - [ ] 感知层：MediaPipe 提取 27 点骨架
 - [ ] 智能体层：LLM 三步提示管线（可先用 mock gloss）
 - [ ] 手势切分：运动能量 + 滑动窗口

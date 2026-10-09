@@ -1,0 +1,25 @@
+# 手势切分配置 — 运动能量粗切分 + 滑动窗口细识别
+
+# ---------- 运动能量粗切分 ----------
+energy:
+  # 使用手腕关键点（左右手 wrist）计算帧间运动能量
+  reference_points: [left_wrist, right_wrist]
+  # 速度低于阈值且持续 min_static_frames 帧 -> 判定为单元边界
+  velocity_threshold: 0.02    # 归一化坐标/帧
+  min_static_frames: 5        # 静默持续帧数（约 0.17s @30fps）
+  min_segment_frames: 8       # 短于此长度的片段视为噪声丢弃
+  max_segment_frames: 120     # 长于此长度强制截断
+  smoothing_window: 3         # 速度序列平滑窗口
+
+# ---------- 滑动窗口细识别 ----------
+window:
+  size: 30                    # 窗口帧数（约 1s @30fps）
+  stride: 10                  # 滑动步长
+  # 时序平滑
+  smoothing: vote             # vote(投票) | viterbi | none
+  vote_threshold: 0.5         # 投票阈值
+
+# ---------- 输出 ----------
+output:
+  min_confidence: 0.3         # 低于此置信度的候选直接丢弃
+  merge_gap: 3                # 间隔小于该帧数的同 gloss 片段合并
