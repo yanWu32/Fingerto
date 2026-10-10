@@ -152,7 +152,7 @@ python tools/verify_perception.py  # MediaPipe 感知层验证
 - [x] 工程脚手架（目录结构 / requirements / .gitignore / 环境自检脚本）
 - [x] 方案确定书
 - [x] **运行环境配置**（Anaconda `fingerto` / Python 3.10 / torch+CUDA / MediaPipe 0.10.14）
-- [ ] 感知层：MediaPipe 提取 27 点骨架
+- [x] 感知层：MediaPipe 提取 27 点骨架（`perception/`：keypoint_extractor / skeleton / visualize / extract）
 - [ ] 智能体层：LLM 三步提示管线（可先用 mock gloss）
 - [ ] 手势切分：运动能量 + 滑动窗口
 - [ ] 识别层：ST-GCN 基线（依赖数据集）
