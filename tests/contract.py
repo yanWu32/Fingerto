@@ -60,8 +60,8 @@ GLOSS_SCHEMA = {
 }
 
 
-def validate_gloss_output(obj: Any) -> None:
-    """校验识别层输出，失败抛 ValueError（带说明）。
+def validate_gloss_output(obj: Any) -> bool:
+    """校验识别层输出：合法返回 True，失败抛 ValueError（带说明）。
 
     合法示例：
         {
@@ -90,6 +90,7 @@ def validate_gloss_output(obj: Any) -> None:
     for g in obj["gloss_sequence"]:
         if not isinstance(g, str):
             raise ValueError(f"[gloss] gloss_sequence 元素须为 str，收到 {g!r}")
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -104,8 +105,8 @@ AGENT_SCHEMA = {
 }
 
 
-def validate_agent_output(obj: Any) -> None:
-    """校验智能体层输出，失败抛 ValueError（带说明）。
+def validate_agent_output(obj: Any) -> bool:
+    """校验智能体层输出：合法返回 True，失败抛 ValueError（带说明）。
 
     合法示例：
         {
@@ -133,6 +134,7 @@ def validate_agent_output(obj: Any) -> None:
                              f"收到 {type(val).__name__}")
     if obj["intent"] == "" or obj["task"] == "":
         raise ValueError("[agent] intent / task 不能为空字符串（无任务时 task='none'）")
+    return True
 
 
 # ---------------------------------------------------------------------------
