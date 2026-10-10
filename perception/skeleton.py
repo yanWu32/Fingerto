@@ -103,7 +103,8 @@ def normalize_sequence(seq, vis=None, max_missing_ratio=0.3):
     for t in range(T):
         if missing[t]:
             continue
-        p = seq[t] - root
+        # 逐帧以鼻（root 关节）为原点平移，保证每帧平移无关
+        p = seq[t] - seq[t][_ROOT]
         p = np.stack([_rot_y(p[i]) for i in range(p.shape[0])], axis=0)
         out[t] = p / scale
 
@@ -125,10 +126,10 @@ def smooth_sequence(seq, vis=None, window=5):
     out = seq.copy()
     for t in range(T):
         lo, hi = max(0, t - k), min(T, t + k + 1)
-        w = vis[lo:hi].sum(axis=0, keepdims=True).T  # (27,1)
-        acc = (seq[lo:hi] * vis[lo:hi, :, None]).sum(axis=0)
-        denom = np.maximum(w[:, 0], 1e-6)
-        out[t] = acc / denom[None, :]
+        w = vis[lo:hi].sum(axis=0)                    # (27,)
+        acc = (seq[lo:hi] * vis[lo:hi, :, None]).sum(axis=0)  # (27,3)
+        denom = np.maximum(w, 1e-6)
+        out[t] = acc / denom[:, None]                 # (27,3) / (27,1)
     return out
 
 
