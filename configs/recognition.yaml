@@ -2,7 +2,7 @@
 
 model:
   name: stgcn               # stgcn | transformer_gcn | cnn_lstm
-  num_classes: 1000         # 词汇量（按实际数据集调整）
+  num_classes: 60          # 当前与合成集 60 类对齐；接入 CSL(500)/ISW-1000(1000) 时改为对应词汇量
   in_channels: 3            # (x, y, z)
   num_points: 27            # 骨架点数
   # ST-GCN
@@ -30,9 +30,9 @@ train:
   weight_decay: 0.0001
   optimizer: adam
   scheduler: cosine
-  num_workers: 4
+  num_workers: 0            # Windows dataloader 多进程易出问题，保持 0；Linux 可提到 4
   seed: 42
-  device: cuda              # cuda | cpu
+  device: auto              # auto | cuda | cpu —— auto 在 cuda 不可用时自动回退 cpu（train.py:130）
   amp: true                 # 混合精度（RTX 4060 支持）
 
 data:

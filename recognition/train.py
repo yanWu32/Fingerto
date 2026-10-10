@@ -127,9 +127,12 @@ def main(argv=None):
     torch.manual_seed(seed)
     np.random.seed(seed)
 
-    if device == "cuda" and not torch.cuda.is_available():
+    if device in (None, "", "auto"):
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+    elif device == "cuda" and not torch.cuda.is_available():
         print("[train] cuda 不可用，回退 cpu")
         device = "cpu"
+    print(f"[train] device={device}")
     device = torch.device(device)
 
     # 构造 dataloader
