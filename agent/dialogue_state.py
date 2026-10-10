@@ -25,16 +25,41 @@ class DialogueState:
         self.env: Dict[str, Any] = {}        # 设备状态
         self.preferences: Dict[str, Any] = {}
         self.pending_intent: Dict[str, Any] = {}  # 待澄清意图
+        self.last_entity: str = ""           # 最近提及的实体（指代消解锚点）
 
     # ---- 写入 ----
     def add_turn(self, role: str, content: str, intent: str = "",
-                 task: str = "", gloss: Any = None) -> None:
+                 task: str = "", gloss: Any = None, entity: str = "") -> None:
         self.history.append({
             "role": role, "content": content,
             "intent": intent, "task": task, "gloss": gloss,
         })
+        if entity:
+            self.last_entity = entity
         if len(self.history) > self.max_history:
             self.history = self.history[-self.max_history:]
+
+    def record_entity(self, entity: str) -> None:
+        """记录本轮提及的实体，供后续指代消解复用。"""
+        if entity:
+            self.last_entity = entity
+
+    def resolve_coreference(self, text: str) -> str:
+        """轻量确定性指代消解：把 它/这个/那个 替换为最近提及实体。
+        仅当 enable_coreference 且存在锚点时生效（System B 关闭）。
+        """
+        if not (self.enable_coreference and self.last_entity):
+            return text
+        for pronoun in ("这个", "那个", "它"):
+            text = text.replace(pronoun, self.last_entity)
+        return text
+
+    def detect_correction(self, text: str) -> bool:
+        """判定用户是否在本轮做了纠正（System C 启用纠正时使用）。"""
+        if not self.enable_correction:
+            return False
+        markers = ("不对", "不是", "错了", "搞错", "我是说", "其实", "重新", "更正")
+        return any(m in text for m in markers)
 
     def set_env(self, env: Dict[str, Any]) -> None:
         self.env = dict(env or {})

@@ -16,6 +16,14 @@ from agent.cache import TranslationCache
 from agent.dialogue_state import DialogueState
 from agent.llm_client import LLMClient
 from agent.pipeline import AgentPipeline
+from agent.systems import (
+    RuleTemplateSystem,
+    NoStateLLMSystem,
+    FullStateLLMSystem,
+    FineTunedLocalSystem,
+    build_system,
+    SYSTEM_NAMES,
+)
 from tests.contract import validate_agent_output, validate_gloss_output
 
 
@@ -53,5 +61,7 @@ def run_agent(gloss_json: Dict[str, Any],
 
 __all__ = [
     "AgentPipeline", "DialogueState", "LLMClient", "TranslationCache",
+    "RuleTemplateSystem", "NoStateLLMSystem", "FullStateLLMSystem",
+    "FineTunedLocalSystem", "build_system", "SYSTEM_NAMES",
     "build_agent", "run_agent", "validate_gloss_output", "validate_agent_output",
 ]
