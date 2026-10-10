@@ -17,7 +17,9 @@ from typing import Any, Dict, List
 # ---------------------------------------------------------------------------
 # 骨骼张量契约
 # ---------------------------------------------------------------------------
-# 27 点布局：双手各 21 点（HAND_OFFSET=0）+ 上半身 6 点（POSE_OFFSET=21）。
+# 27 点布局（已锁定）：主手 21 点（HAND_OFFSET=0，MediaPipe Hands 标准 21 点）
+# + 上半身 6 点（POSE_OFFSET=21，Pose 子集：鼻/左肩/右肩/左肘/右肘/左腕）。
+# 即"单主手 + 上身"，非双手。若识别层掉点需双手，须先把契约扩到 48 点布局。
 # 顺序见 perception/skeleton.py 的 HAND_LANDMARK_IDX / POSE_LANDMARK_IDX。
 NUM_POINTS = 27
 NUM_HAND_POINTS = 21
