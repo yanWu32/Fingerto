@@ -17,14 +17,17 @@ env/
 ENV/
 
 # ---------- 数据与模型（体积大，不入库） ----------
-data/*
-!data/.gitkeep
+# data 层「源码与文档」入库；仅忽略大体积产物与运行时缓存
+# （注意：不要用 data/* 整体忽略，否则 data/synthetic.py 等源码也会被漏掉）
 *.npz
 *.npy
 *.pt
 *.pth
 *.ckpt
 *.onnx
+data/cache/
+data/processed/*
+!data/processed/.gitkeep
 runs/
 checkpoints/
 outputs/
