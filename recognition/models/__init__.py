@@ -1,8 +1,9 @@
 """识别层模型注册表。"""
 
+from .cnn_lstm import CNNLSTM
+from .layout import to_b_t_n_c
 from .stgcn import STGCN
 from .transformer_gcn import TransformerGCN
-from .cnn_lstm import CNNLSTM
 
 MODEL_REGISTRY = {
     "stgcn": STGCN,
@@ -17,4 +18,5 @@ def build_model(name: str, num_classes: int, **kwargs):
     return MODEL_REGISTRY[name](num_classes=num_classes, **kwargs)
 
 
-__all__ = ["STGCN", "TransformerGCN", "CNNLSTM", "MODEL_REGISTRY", "build_model"]
+__all__ = ["STGCN", "TransformerGCN", "CNNLSTM", "MODEL_REGISTRY", "build_model",
+           "to_b_t_n_c"]

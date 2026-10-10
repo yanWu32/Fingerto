@@ -1,6 +1,6 @@
 """ST-GCN 基线：时空图卷积骨干（骨骼模态）。
 
-输入：(B, T, 27, 3)   — B 批大小, T 帧, 27 关节, 3 通道(x,y,z)
+输入：(B, T, 27, 3) 或 (B, C=3, T, 27) —— 两种排布都接受，内部统一成 (B, T, N, C)。
 输出：(B, num_classes) — 手语词分类 logits
 
 图邻接由 perception/skeleton.py 的 HAND_EDGES（主手 20 边）+ POSE_EDGES（上身 7 边）
@@ -15,6 +15,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from .graph import build_adjacency, partition_strategy
+from .layout import to_b_t_n_c
 
 
 class STGCNGraphConv(nn.Module):
@@ -52,12 +53,12 @@ class STGCNGraphConv(nn.Module):
             in_channels, out_channels,
             kernel_size=(1, 1), stride=(1, 1), padding=(0, 0), bias=True,
         )
-        # 时间卷积
+        # 时间卷积（stride 固定走 (1,1)：时间维下采样会破坏残差对齐，见下方 forward 说明）
         self.tcn = nn.Sequential(
             nn.BatchNorm2d(out_channels),
             nn.ReLU(inplace=True),
             nn.Conv2d(out_channels, out_channels,
-                      kernel_size=(kernel_size, 1), stride=(stride, 1),
+                      kernel_size=(kernel_size, 1), stride=(1, 1),
                       padding=((kernel_size - 1) // 2, 0)),
             nn.BatchNorm2d(out_channels),
             nn.Dropout(dropout, inplace=True),
@@ -65,18 +66,23 @@ class STGCNGraphConv(nn.Module):
 
         if not residual:
             self.residual = lambda x: 0
-        elif in_channels == out_channels and stride == 1:
+        elif in_channels == out_channels:
             self.residual = lambda x: x
         else:
+            # 残差投影严格只在通道维做 1x1 卷积，stride 恒为 (1,1) -> 保证 T、N 不变
             self.residual = nn.Sequential(
                 nn.Conv2d(in_channels, out_channels, kernel_size=(1, 1),
-                          stride=(stride, 1)),
+                          stride=(1, 1)),
                 nn.BatchNorm2d(out_channels),
             )
         self.relu = nn.ReLU(inplace=True)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """x: (B, C, T, N) -> (B, C', T', N)。"""
+        """x: (B, C, T, N) -> (B, C', T, N)。
+
+        不变量：输出时间维 T' 必须等于输入 T（stride 强制为 1），
+        否则残差相加会报 "size of tensor a (90) must match tensor b (45)"。
+        """
         # 分区聚合：对每个子图做节点级线性（1x1 卷积对通道），按邻接加权求和
         # 将 x 与 A_k 结合：xA = sum_k A_k @ (conv_part_k(x))
         B, C, T, N = x.shape
@@ -90,6 +96,7 @@ class STGCNGraphConv(nn.Module):
             agg = torch.einsum("nv,bctv->bctn", Ak, feat)  # (B, C', T, N)
             out_parts.append(agg)
         out = sum(out_parts)  # (B, C', T, N)
+        # 残差：residual 分支 stride 恒为 1（仅 1x1 通道投影），故 T/N 与 out 恒对齐
         out = self.relu(out + self.residual(x))
         out = self.tcn(out)
         return out
@@ -113,19 +120,21 @@ class STGCN(nn.Module):
                  temporal_strides: tuple = (1, 1, 1), tcn_kernel: int = 9):
         super().__init__()
         self.num_points = num_points
+        self.in_channels = in_channels
         self.data_bn = nn.BatchNorm1d(in_channels * num_points)
         self.dropout = dropout
 
-        # 关键：默认各 block 时间维 stride=1，保持 T 不变，使残差分支 T 对齐
-        # （避免 T 下采样导致 residual(x) 与 gcn 输出时间维不一致）。
+        # 关键：block 数恒等于 len(hidden_channels)，使 fc 输入通道与 stage 输出一致；
+        # 时间维 stride 统一为 1，保证残差分支与主分支 T 对齐。
         layers = []
         in_ch = in_channels
         for i, out_ch in enumerate(hidden_channels):
-            stride = temporal_strides[i] if i < len(temporal_strides) else 1
-            layers.append(STGCNBlock(in_ch, out_ch, kernel_size=3, stride=stride,
+            # temporal_strides 仅作兼容保留：时间下采样会让残差失配，故一律按 1 处理
+            layers.append(STGCNBlock(in_ch, out_ch, kernel_size=3, stride=1,
                                      dropout=dropout, num_points=num_points))
             in_ch = out_ch
         self.stage = nn.Sequential(*layers)
+        self.stage_out_channels = in_ch
 
         # 全局时间 + 空间池化 -> 分类头
         self.fc = nn.Sequential(
@@ -134,16 +143,18 @@ class STGCN(nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """x: (B, T, 27, 3) -> (B, num_classes)。"""
+        """x: (B, T, 27, 3) 或 (B, C=3, T, 27) -> (B, num_classes)。"""
+        x = to_b_t_n_c(x, self.num_points)
         B, T, N, C = x.shape
         assert N == self.num_points, f"期望 N={self.num_points}，收到 {N}"
+        assert C == self.in_channels, f"期望 C={self.in_channels}，收到 {C}"
         # (B,T,N,C) -> (B,C,T,N)
         x = x.permute(0, 3, 1, 2).contiguous()
         # 通道-节点展平后做 data BN
         x = x.view(B, C * N, T)
         x = self.data_bn(x)
         x = x.view(B, C, T, N)
-        x = self.stage(x)            # (B, C', T', N)
+        x = self.stage(x)            # (B, C', T, N)  —— T 保持不变（stride=1）
         # 全局平均池化（时间+空间）
         x = F.avg_pool2d(x, x.size()[2:])  # (B, C', 1, 1)
         x = x.view(B, -1)

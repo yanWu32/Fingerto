@@ -4,6 +4,7 @@
     python recognition/train.py --mock
     python recognition/train.py --data-root <dir>  # 真实 .npz 目录
     python recognition/train.py --mock --model transformer_gcn --epochs 2
+    python recognition/train.py --synthetic --model stgcn --epochs 8  # 合成集真训
 
 参数从 configs/recognition.yaml 读取；--num-classes / --model / --epochs 等可覆盖。
 """
@@ -21,6 +22,7 @@ if _ROOT not in sys.path:
 import numpy as np
 import torch
 import torch.nn as nn
+from torch.utils.data import DataLoader, TensorDataset
 
 try:
     import yaml
@@ -29,6 +31,43 @@ except Exception:  # pragma: no cover
 
 from recognition.dataset import build_dataloader
 from recognition.models import build_model
+
+
+def _synthetic_loaders(root: str, batch_size: int, num_workers: int):
+    """用 data/dataset.py::load_dataset 读合成集（train/val/test 三个切分）。
+
+    返回 (loaders dict, classes list)。不动 data/ 层，仅只读调用。
+    """
+    from data.dataset import load_dataset
+
+    loaders = {}
+    classes = None
+    for split in ("train", "val", "test"):
+        sk, lb, cls = load_dataset(split, root=root)
+        classes = cls
+        ds = TensorDataset(torch.from_numpy(sk), torch.from_numpy(lb))
+        loaders[split] = DataLoader(
+            ds, batch_size=batch_size, shuffle=(split == "train"),
+            num_workers=num_workers,
+        )
+    return loaders, classes
+
+
+@torch.no_grad()
+def _evaluate(model, loader, device):
+    """在给定 loader 上算 top-1 准确率与平均 loss。"""
+    model.eval()
+    crit = nn.CrossEntropyLoss()
+    total, correct, loss_sum = 0, 0, 0.0
+    for x, y in loader:
+        x = x.to(device)
+        y = y.to(device)
+        logits = model(x)
+        loss_sum += crit(logits, y).item() * x.size(0)
+        correct += (logits.argmax(1) == y).float().sum().item()
+        total += x.size(0)
+    model.train()
+    return loss_sum / max(total, 1), correct / max(total, 1)
 
 
 def load_config(path: str) -> dict:
@@ -42,6 +81,8 @@ def parse_args(argv=None):
     p = argparse.ArgumentParser(description="Recognition training (mock-capable)")
     p.add_argument("--config", default=os.path.join(_ROOT, "configs", "recognition.yaml"))
     p.add_argument("--mock", action="store_true", help="在合成数据上冒烟训练")
+    p.add_argument("--synthetic", action="store_true",
+                   help="在 data/synthetic 合成数据集上做真实训练（含 val/test 评估）")
     p.add_argument("--data-root", default=None, help="真实 .npz 目录")
     p.add_argument("--model", default=None, choices=["stgcn", "transformer_gcn", "cnn_lstm"])
     p.add_argument("--num-classes", type=int, default=None)
@@ -78,6 +119,8 @@ def main(argv=None):
     # mock 模式：占位 60 类（与 R-data 并行生成的 60 个中文 gloss 对齐）
     if args.mock:
         num_classes = args.num_classes or 60
+    elif args.synthetic:
+        num_classes = args.num_classes or num_classes  # 真实类数由 loader 覆盖
     else:
         num_classes = args.num_classes or num_classes
 
@@ -90,7 +133,17 @@ def main(argv=None):
     device = torch.device(device)
 
     # 构造 dataloader
-    if args.mock or args.data_root is None:
+    eval_loaders = {}
+    if args.synthetic:
+        syn_root = args.data_root or os.path.join(_ROOT, "data", "synthetic")
+        print(f"[train] synthetic 模式：读取 {syn_root}")
+        loaders, classes = _synthetic_loaders(syn_root, batch_size, num_workers)
+        loader = loaders["train"]
+        eval_loaders = {"val": loaders["val"], "test": loaders["test"]}
+        num_classes = len(classes)
+        print(f"[train] train={len(loaders['train'].dataset)}  "
+              f"val={len(loaders['val'].dataset)}  test={len(loaders['test'].dataset)}")
+    elif args.mock or args.data_root is None:
         print(f"[train] mock 模式：合成数据，num_classes={num_classes}")
         loader, classes = build_dataloader(
             root=None, mock_classes=num_classes, batch_size=batch_size,
@@ -127,8 +180,18 @@ def main(argv=None):
             running_loss += loss.item() * x.size(0)
             running_acc += (logits.argmax(1) == y).float().sum().item()
             n += x.size(0)
-        print(f"[train] epoch {epoch}/{epochs}  loss={running_loss / max(n,1):.4f}  "
-              f"acc={running_acc / max(n,1):.3f}")
+        train_acc = running_acc / max(n, 1)
+        line = (f"[train] epoch {epoch}/{epochs}  loss={running_loss / max(n,1):.4f}  "
+                f"acc={train_acc:.3f}")
+        for split, el in eval_loaders.items():
+            vloss, vacc = _evaluate(model, el, device)
+            line += f"  {split}_loss={vloss:.4f}  {split}_acc={vacc:.3f}"
+        print(line)
+
+    if eval_loaders:
+        for split, el in eval_loaders.items():
+            vloss, vacc = _evaluate(model, el, device)
+            print(f"[train] final {split}: loss={vloss:.4f}  acc={vacc:.3f}")
 
     if args.save:
         os.makedirs(os.path.dirname(os.path.abspath(args.save)), exist_ok=True)
