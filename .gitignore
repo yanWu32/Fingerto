@@ -28,6 +28,8 @@ ENV/
 data/cache/
 data/processed/*
 !data/processed/.gitkeep
+data/.tmp_*/
+data/synthetic/*.npz
 runs/
 checkpoints/
 outputs/

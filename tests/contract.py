@@ -140,11 +140,11 @@ def validate_agent_output(obj: Any) -> bool:
 # ---------------------------------------------------------------------------
 # 跨层公共校验入口（供各层在交付前调用）
 # ---------------------------------------------------------------------------
-def assert_contract(layer: str, obj: Any) -> None:
-    """layer 取值 'gloss' 或 'agent'，对 obj 做对应校验。"""
+def assert_contract(layer: str, obj: Any) -> bool:
+    """layer 取值 'gloss' 或 'agent'，对 obj 做对应校验；合法返回 True，失败抛 ValueError。"""
     if layer == "gloss":
-        validate_gloss_output(obj)
+        return validate_gloss_output(obj)
     elif layer == "agent":
-        validate_agent_output(obj)
+        return validate_agent_output(obj)
     else:
         raise ValueError(f"未知契约层 {layer!r}（应为 'gloss' 或 'agent'）")
