@@ -162,14 +162,17 @@ python tools/verify_perception.py  # MediaPipe 感知层验证
 - [x] **运行环境配置**（Anaconda `fingerto` / Python 3.10 / torch+CUDA / MediaPipe 0.10.14）
 - [x] 感知层：MediaPipe 提取单主手 21 点 + 上身 6 点 = 27 点骨架（`perception/`）
 - [x] 手势切分：运动能量粗切分 + 滑动窗口（`segmentation/segmenter.py`）
-- [x] 识别层：ST-GCN 基线 + Transformer-GCN + CNN-LSTM，输出 gloss JSON（`recognition/`，commit c320c1b / d8288b8）
-  - [x] **修复骨架图连通性 bug**（graph.py：POSE_EDGES 未偏移 + 缺 HAND→POSE 跨边，导致上身 21-26 点被误判 center；已补偏移与桥接边并加连通性断言）
+- [x] 识别层：ST-GCN 基线 + Transformer-GCN + CNN-LSTM，输出 gloss JSON（`recognition/`，commit c320c1b / 回归修复 d8288b8）
+  - [x] **修复骨架图连通性 bug**（graph.py：POSE_EDGES 未偏移 + 缺 HAND→POSE 跨边，导致上身 21-26 点被误判 center；已补偏移与桥接边并加连通性断言，b11a843）
+  - [x] **真实数据训练已产出**：WLASL100（665 视频 / 100 类）抽 27 点骨架 + ST-GCN/CNN-LSTM/Transformer-GCN 三模型训练，指标见 `experiments/results/wlasl100_real_training.md`（32747ef）
 - [x] 智能体层：三步提示管线 + 对话状态 + System A/B/C/D + 缓存 + LLM 客户端（`agent/`）
 - [x] 数据层：合成 60 类 + CSL/WLASL 加载器与 WLASL→27 点提取管线（`data/`）
-  - [~] **真实数据实验进行中**：WLASL100（665 视频）抽骨架 + ST-GCN 真实训练，指标待产出（`data/wlasl100_real`）
-- [ ] 应用层：Gradio 端到端 Demo（`app/`，代码已提交 bbe3857，端到端联调待做）
-- [ ] 实验层：消融评测脚本与指标采集（`experiments/`，脚本已提交 bbe3857，跑批待做）
-- [ ] 消融实验与论文撰写
+- [x] 应用层：Gradio 端到端 Demo（`app/app.py` + `pipeline_demo.py`，TASK-003 验收 bbe3857；真实摄像头+LLM API 联调待做）
+- [x] 实验层：消融评测脚本与指标采集（`experiments/`，TASK-004 验收 bbe3857；真实 LLM API 跑批待做）
+  - [x] **识别层真实指标已闭环**：`train.py` 输出 Top-1/Top-5；`run_ablation.py` 闭环 5 场景 × 4 系统
+- [ ] 全链路集成联调（真实摄像头 + 真实 LLM API）
+- [ ] 中文真实数据（ISW-1000 / CSL 申请中）→ 复跑识别层真实指标，替换 WLASL100 为论文主结论
+- [ ] 消融实验（真实 LLM）与论文撰写
 
 ---
 
