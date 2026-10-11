@@ -3,13 +3,27 @@
 验证：load_dataset 形状 / classes 长度=60 / 合成样本通过 check_skeleton_shape /
 csl_loader import 无错 / SyntheticDataset 可迭代取 (T,27,3)+label。
 无外部数据（ISW-1000/CSL）时也应全绿。
+
+本环境（fingerto conda env）未安装 pytest，故本文件写成**可直接执行的独立脚本**：
+
+    python tests/test_data.py            # 运行全部断言
+    python tests/test_data.py -v         # 打印每条用例
+
+若环境里装了 pytest，仍然可以直接 `pytest tests/test_data.py`（test_* 函数会被自动收集）。
+两种运行方式共用同一套 CASE_LIST，不存在跳过/死测试。
 """
 import os
 import sys
+import traceback
 from pathlib import Path
 
 import numpy as np
-import pytest
+
+# pytest 为可选依赖：装了就用（pytest 收集期需要符号存在），没装也不阻塞独立运行
+try:  # pragma: no cover
+    import pytest  # noqa: F401
+except Exception:  # pragma: no cover
+    pytest = None
 
 # 把仓库根加入 sys.path，支持 `python -m pytest tests/test_data.py`
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -90,3 +104,51 @@ def test_split_files_exist():
         root = Path(_ds.DEFAULT_ROOT)
         assert (root / f"{split}.npz").exists()
     assert (Path(_ds.DEFAULT_ROOT) / "classes.txt").exists()
+
+
+# ---------------------------------------------------------------------------
+# 独立运行入口（fingerto 环境未装 pytest，故提供与 test_recognition.py 一致的 runner）
+# 用法：python tests/test_data.py [-v]
+# 前提：data/synthetic/*.npz 需先由 `python data/make_testset.py` 生成（npz 不入库）
+# ---------------------------------------------------------------------------
+CASE_LIST: list[tuple[str, object]] = [
+    ("1. load_dataset 形状/classes/各切分一致", test_load_dataset_shape_and_classes),
+    ("2. classes 长度=60 且无重复", test_classes_length_is_60),
+    ("3. 合成样本通过 27 点骨架契约（覆盖 60 类）", test_synthetic_samples_pass_contract),
+    ("4. csl_loader 可导入（MediaPipe 缺失也不炸）", test_csl_loader_importable),
+    ("5. SyntheticDataset 可索引/可迭代", test_synthetic_dataset_iterable),
+    ("6. 各切分 npz 与 classes.txt 存在", test_split_files_exist),
+]
+
+
+def main() -> int:
+    verbose = "-v" in sys.argv or "--verbose" in sys.argv
+    print("=" * 72)
+    print(f"数据层自测（独立脚本，无 pytest） numpy={np.__version__}")
+    print("=" * 72)
+    passed, failed = 0, []
+    for name, fn in CASE_LIST:
+        try:
+            fn()
+        except Exception as exc:  # noqa: BLE001
+            failed.append((name, exc))
+            print(f"[FAIL]  {name}")
+            if verbose:
+                traceback.print_exc()
+            else:
+                print(f"        {type(exc).__name__}: {exc}")
+        else:
+            passed += 1
+            print(f"[PASS]  {name}")
+    print("=" * 72)
+    print(f"结果：{passed}/{len(CASE_LIST)} 通过，{len(failed)} 失败")
+    if failed:
+        for name, _ in failed:
+            print(f"  - 失败：{name}")
+        return 1
+    print("全部通过 ✅")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
