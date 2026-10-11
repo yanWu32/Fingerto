@@ -49,27 +49,30 @@
 ### 层间数据契约
 
 ```json
-// 识别层 → 智能体层
+// 识别层 → 智能体层（gloss JSON；识别层只给 gloss，不决策）
 {"gloss_sequence": ["我", "冷", "窗", "关"],
  "confidence":    [0.92, 0.58, 0.91, 0.85],
  "timestamps":    [[0.0, 0.4], [0.5, 0.9], [1.0, 1.4], [1.5, 1.9]]}
 
-// 智能体层 → 应用层
+// 智能体层 → 应用层（agent JSON；task 为字符串任务标识，非 dict）
 {"natural_language": "我觉得冷，能关一下窗户吗？",
  "intent": "command",
- "task": {"action": "close_window"},
- "clarification": null,
+ "task": "close_window",
+ "clarification": false,
  "low_confidence_words": ["冷"]}
 ```
+
+> 契约以 `tests/contract.py` 为唯一事实源，字段/类型/校验语义详见 `docs/层间契约.md`。
+> 注意：`task` 必须是字符串（无任务时为 `"none"`），`clarification` 必须是布尔值。
 
 ## 三、分层方案要点
 
 | 层 | 关键方案 |
 |---|---|
-| **感知层** | OpenCV + MediaPipe 提取双手各 21 点 + 上半身 6 点 = **27 点骨架**；缺失帧时序插值 + 运动学约束；随机旋转增强 |
+| **感知层** | OpenCV + MediaPipe 提取**单主手 21 点 + 上身 6 点 = 27 点骨架**（绝不是"双手各 21 点"）；缺失帧时序插值 + 运动学约束；随机旋转增强 |
 | **手势切分** | **运动能量粗切分**（手腕速度低于阈值持续 N 帧判边界）+ **滑动窗口细识别**（30 帧窗口 + 时序平滑 / Viterbi）组合 |
 | **识别层** | 基线锁 **ST-GCN**（时空图卷积）；对比 Transformer+GCN、轻量 CNN+LSTM；输出 Top-1 / Top-5 + 延迟 |
-| **智能体层** | 三步提示管线（确认 → 翻译 → 决策）；对话状态管理；**置信度路由消歧**（<0.6 澄清）；云端 LLM API 主用 + 本地降级 + 高频词缓存 |
+| **智能体层** | 三步提示管线（确认 → 翻译 → 决策）；对话状态管理；**置信度路由消歧**（默认 <0.4 澄清）；云端 LLM API 主用 + 本地降级 + 高频词缓存 |
 | **应用层** | Gradio；信息查询与模拟智能家居两类场景，无需真实硬件 |
 
 ## 四、技术栈
@@ -128,10 +131,13 @@ python tools/verify_perception.py  # MediaPipe 感知层验证
 
 | 预案 | 数据集 | 说明 |
 |---|---|---|
-| A（首选） | **ISW-1000** | 约 1000 中文手语词，仅用其骨骼模态；正在申请中 |
-| B（降级） | **CSL** | 合肥工大中文手语孤立词集，含 RGB / 深度 / 骨骼 |
+| A（首选） | **ISW-1000** | 约 1000 中文手语词，仅用其骨骼模态；正在申请中（需本人发申请邮件） |
+| B（降级） | **CSL** | 中科大中文手语孤立词集（500 词，自带 25 关节骨骼）；需导师签署 Release Agreement 后申请 |
 | C（保底） | 自采最小集 | 本人录制高频词，MediaPipe 提骨架，跑通端到端管线 |
+| **D（真实对照，已落地）** | **WLASL100** | 英文美式手语（ASL）视频集；用户已下载 665/2038 视频到 `E:\Program\datasets\WLASL100`，抽 27 点骨架做「方法跨语种泛化」对照基线（**非中文主实验**） |
 
+> ⚠️ 真实数据说明：中文数据集（ISW-1000 / CSL）均为申请制，不能裸下载；
+> WLASL 是英文 ASL，仅作对照。论文主实验仍以中文数据集为准，外部效度受申请进度影响。
 > 数据集待定**不阻塞开发**：感知层、切分、智能体层（可用 mock gloss）、
 > 应用层与消融评测脚本均可先行实现。
 
@@ -149,16 +155,22 @@ python tools/verify_perception.py  # MediaPipe 感知层验证
 
 ## 九、进度
 
+> 状态以代码实际为准，详见 `docs/实现进度.md`。
+
 - [x] 工程脚手架（目录结构 / requirements / .gitignore / 环境自检脚本）
 - [x] 方案确定书
 - [x] **运行环境配置**（Anaconda `fingerto` / Python 3.10 / torch+CUDA / MediaPipe 0.10.14）
-- [x] 感知层：MediaPipe 提取 27 点骨架（`perception/`：keypoint_extractor / skeleton / visualize / extract）
-- [ ] 智能体层：LLM 三步提示管线（可先用 mock gloss）
-- [ ] 手势切分：运动能量 + 滑动窗口
-- [ ] 识别层：ST-GCN 基线（依赖数据集）
-- [ ] 应用层：Gradio 端到端 Demo
+- [x] 感知层：MediaPipe 提取单主手 21 点 + 上身 6 点 = 27 点骨架（`perception/`）
+- [x] 手势切分：运动能量粗切分 + 滑动窗口（`segmentation/segmenter.py`）
+- [x] 识别层：ST-GCN 基线 + Transformer-GCN + CNN-LSTM，输出 gloss JSON（`recognition/`，commit c320c1b / d8288b8）
+  - [x] **修复骨架图连通性 bug**（graph.py：POSE_EDGES 未偏移 + 缺 HAND→POSE 跨边，导致上身 21-26 点被误判 center；已补偏移与桥接边并加连通性断言）
+- [x] 智能体层：三步提示管线 + 对话状态 + System A/B/C/D + 缓存 + LLM 客户端（`agent/`）
+- [x] 数据层：合成 60 类 + CSL/WLASL 加载器与 WLASL→27 点提取管线（`data/`）
+  - [~] **真实数据实验进行中**：WLASL100（665 视频）抽骨架 + ST-GCN 真实训练，指标待产出（`data/wlasl100_real`）
+- [ ] 应用层：Gradio 端到端 Demo（`app/`，代码已提交 bbe3857，端到端联调待做）
+- [ ] 实验层：消融评测脚本与指标采集（`experiments/`，脚本已提交 bbe3857，跑批待做）
 - [ ] 消融实验与论文撰写
 
 ---
 
-详细方案见毕设目录下的 `方案确定书.md` 与 `实现方案-全流程.md`。
+详细方案见毕设目录下的 `方案确定书.md` 与 `实现方案-全流程.md`；契约与复现见 `docs/层间契约.md`、`docs/环境与复现.md`。

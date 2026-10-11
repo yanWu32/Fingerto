@@ -6,8 +6,6 @@
 
 import math
 
-import pytest
-
 from tests.contract import (
     NUM_POINTS,
     SKELETON_RANK,
@@ -30,19 +28,21 @@ def test_gloss_ok():
     validate_gloss_output(_good_gloss())  # 不应抛异常
 
 
-@pytest.mark.parametrize("mut", [
-    lambda d: d.pop("gloss_sequence"),
-    lambda d: d.update(confidence=[0.9]),             # 长度不一致
-    lambda d: d.update(confidence=[1.5, 0.2]),        # 越界
-    lambda d: d.update(timestamps=[[2.0, 1.0]]),      # start>end
-    lambda d: d.update(gloss_sequence=["你好", 1]),   # 非 str
-    lambda d: d.update(confidence="0.9"),             # 类型错
-])
-def test_gloss_bad(mut):
-    d = _good_gloss()
-    mut(d)
-    with pytest.raises(ValueError):
-        validate_gloss_output(d)
+def test_gloss_bad():
+    import pytest
+    cases = [
+        lambda d: d.pop("gloss_sequence"),
+        lambda d: d.update(confidence=[0.9]),             # 长度不一致
+        lambda d: d.update(confidence=[1.5, 0.2]),        # 越界
+        lambda d: d.update(timestamps=[[2.0, 1.0]]),      # start>end
+        lambda d: d.update(gloss_sequence=["你好", 1]),   # 非 str
+        lambda d: d.update(confidence="0.9"),             # 类型错
+    ]
+    for mut in cases:
+        d = _good_gloss()
+        mut(d)
+        with pytest.raises(ValueError):
+            validate_gloss_output(d)
 
 
 # ----------------------------- agent 契约 -----------------------------
@@ -60,18 +60,20 @@ def test_agent_ok():
     validate_agent_output(_good_agent())
 
 
-@pytest.mark.parametrize("mut", [
-    lambda d: d.pop("natural_language"),
-    lambda d: d.update(clarification="no"),           # 非 bool
-    lambda d: d.update(intent=""),                    # 空 intent
-    lambda d: d.update(task=""),                      # 空 task
-    lambda d: d.update(low_confidence_words="我"),     # 非 list
-])
-def test_agent_bad(mut):
-    d = _good_agent()
-    mut(d)
-    with pytest.raises(ValueError):
-        validate_agent_output(d)
+def test_agent_bad():
+    import pytest
+    cases = [
+        lambda d: d.pop("natural_language"),
+        lambda d: d.update(clarification="no"),           # 非 bool
+        lambda d: d.update(intent=""),                    # 空 intent
+        lambda d: d.update(task=""),                      # 空 task
+        lambda d: d.update(low_confidence_words="我"),     # 非 list
+    ]
+    for mut in cases:
+        d = _good_agent()
+        mut(d)
+        with pytest.raises(ValueError):
+            validate_agent_output(d)
 
 
 # ----------------------------- skeleton 契约 -----------------------------

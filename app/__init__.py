@@ -3,3 +3,6 @@
 展示：摄像头画面 / 关键点可视化 / 识别结果 / 翻译文本 / 对话历史 / FPS
 场景：信息查询 + 模拟智能家居控制
 """
+from .pipeline_demo import run_demo, run_demo_from_source
+
+__all__ = ["run_demo", "run_demo_from_source"]
