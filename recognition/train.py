@@ -55,19 +55,22 @@ def _synthetic_loaders(root: str, batch_size: int, num_workers: int):
 
 @torch.no_grad()
 def _evaluate(model, loader, device):
-    """在给定 loader 上算 top-1 准确率与平均 loss。"""
+    """在给定 loader 上算 top-1 / top-5 准确率与平均 loss。"""
     model.eval()
     crit = nn.CrossEntropyLoss()
-    total, correct, loss_sum = 0, 0, 0.0
-    for x, y in loader:
-        x = x.to(device)
-        y = y.to(device)
-        logits = model(x)
-        loss_sum += crit(logits, y).item() * x.size(0)
-        correct += (logits.argmax(1) == y).float().sum().item()
-        total += x.size(0)
+    total, correct, correct5, loss_sum = 0, 0, 0, 0.0
+    with torch.no_grad():
+        for x, y in loader:
+            x = x.to(device)
+            y = y.to(device)
+            logits = model(x)
+            loss_sum += crit(logits, y).item() * x.size(0)
+            correct += (logits.argmax(1) == y).float().sum().item()
+            _, top5 = logits.topk(5, dim=1)
+            correct5 += top5.eq(y.view(-1, 1)).sum().item()
+            total += x.size(0)
     model.train()
-    return loss_sum / max(total, 1), correct / max(total, 1)
+    return loss_sum / max(total, 1), correct / max(total, 1), correct5 / max(total, 1)
 
 
 def load_config(path: str) -> dict:
@@ -204,14 +207,14 @@ def main(argv=None):
         line = (f"[train] epoch {epoch}/{epochs}  loss={running_loss / max(n,1):.4f}  "
                 f"acc={train_acc:.3f}")
         for split, el in eval_loaders.items():
-            vloss, vacc = _evaluate(model, el, device)
-            line += f"  {split}_loss={vloss:.4f}  {split}_acc={vacc:.3f}"
+            vloss, vacc, vacc5 = _evaluate(model, el, device)
+            line += f"  {split}_acc={vacc:.3f}(top5={vacc5:.3f})"
         print(line)
 
     if eval_loaders:
         for split, el in eval_loaders.items():
-            vloss, vacc = _evaluate(model, el, device)
-            print(f"[train] final {split}: loss={vloss:.4f}  acc={vacc:.3f}")
+            vloss, vacc, vacc5 = _evaluate(model, el, device)
+            print(f"[train] final {split}: loss={vloss:.4f}  acc={vacc:.3f}  top5={vacc5:.3f}")
 
     if args.save:
         os.makedirs(os.path.dirname(os.path.abspath(args.save)), exist_ok=True)
