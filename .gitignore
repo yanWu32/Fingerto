@@ -30,6 +30,10 @@ data/processed/*
 !data/processed/.gitkeep
 data/.tmp_*/
 data/synthetic/*.npz
+data/wlasl100_real/
+data/_wlasl100_present_meta.json
+data/wlasl_pilot/
+_pilot_extract.log
 runs/
 checkpoints/
 outputs/

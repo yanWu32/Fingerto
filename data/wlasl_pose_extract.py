@@ -178,6 +178,11 @@ def extract_one_video(
     if not cap.isOpened():
         return None
 
+    # 区间语义：frame_start=None 或 <0 -> 从头；frame_end=None 或 <=0 -> 到尾
+    # （WLASL 标注里 frame_end=-1 表示「整段视频」，不是「第 -1 帧」）
+    f_start = frame_start if (frame_start is not None and frame_start > 0) else 0
+    f_end = frame_end if (frame_end is not None and frame_end > 0) else (1 << 30)
+
     frames: List[np.ndarray] = []
     vis_frames: List[np.ndarray] = []
     fidx = 0
@@ -185,11 +190,11 @@ def extract_one_video(
         ok, frame = cap.read()
         if not ok:
             break
-        # 仅保留 [frame_start, frame_end] 区间
-        if frame_start is not None and fidx < frame_start:
+        # 仅保留 [f_start, f_end] 区间
+        if fidx < f_start:
             fidx += 1
             continue
-        if frame_end is not None and fidx > frame_end:
+        if fidx > f_end:
             break
         skel, vis = extractor.extract_frame(frame)
         frames.append(skel)
@@ -211,6 +216,24 @@ def extract_one_video(
 # ---------------------------------------------------------------------------
 # 4. 数据集构建（读 WLASL_v0.3.json -> 切分 -> 存 npz + glosses.txt）
 # ---------------------------------------------------------------------------
+def _normalize_meta(meta) -> dict:
+    """把 WLASL 注释统一成 {gloss: [instances]} 字典。
+
+    WLASL_v0.3.json / WLASL100.json 实际是 list[{gloss, instances:[...]}]；
+    旧代码假设 dict[gloss] = list。这里做兼容归一，避免 AttributeError: 'list'。
+    """
+    if isinstance(meta, list):
+        d = {}
+        for item in meta:
+            g = item["gloss"]
+            d.setdefault(g, [])
+            d[g].extend(item.get("instances", []))
+        return d
+    if isinstance(meta, dict):
+        return meta
+    raise TypeError(f"不支持的 meta 类型：{type(meta)}")
+
+
 def _select_subset(meta: dict, subset: str) -> dict:
     """按 subset 过滤 gloss 词：WLASL100/300/1000/full。"""
     if subset in ("full", "all"):
@@ -274,6 +297,7 @@ def build_dataset(
         )
 
     meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    meta = _normalize_meta(meta)          # list -> dict（兼容 WLASL_v0.3.json 新格式）
     meta = _select_subset(meta, subset)
 
     # 展开为 (video_id, gloss, frame_start, frame_end, url)

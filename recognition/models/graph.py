@@ -22,6 +22,7 @@ except Exception:  # pragma: no cover - 仅在骨架模块缺失时
         (13, 17), (17, 18), (18, 19), (19, 20),
         (0, 17),
     ]
+    # 上身 6 点相对索引（0-5），接入 27 点布局时须 +POSE_OFFSET
     POSE_EDGES = [
         (0, 1), (0, 2), (1, 2),
         (1, 3), (3, 5),
@@ -34,8 +35,39 @@ NUM_POSE_POINTS = 6
 HAND_OFFSET = 0
 POSE_OFFSET = 21
 
-# 单主手 + 上身：图邻接只由 HAND_EDGES + POSE_EDGES 构成（索引已对齐 0..26）
-SKELETON_EDGES: list[tuple[int, int]] = list(HAND_EDGES) + list(POSE_EDGES)
+# ⚠️ 关键点：perception/skeleton.py 里 POSE_EDGES 用「上身相对索引 0-5」定义
+# （与 perception/visualize.py 的 `a + POSE_OFFSET` 用法一致）。接入 27 点全局
+# 布局时必须 +POSE_OFFSET，否则会与主手 0-5 点碰撞造出错误手内边，而上身
+# 21-26 在图中彻底孤立 —— ST-GCN 向心分区(BFS 从主手腕 0 出发)将够不到上身点，
+# 把它们全赋成默认标签 center。故：
+#   1) POSE_EDGES 整体 +POSE_OFFSET 平移到 21-26 内部边；
+#   2) 补一条 HAND→POSE 跨部件连接边（主手腕 0 ↔ 上身左腕 26），使整图连通。
+POSE_EDGES_GLOBAL = [(i + POSE_OFFSET, j + POSE_OFFSET) for i, j in POSE_EDGES]
+HAND_POSE_BRIDGE = [(HAND_OFFSET, POSE_OFFSET + 5)]  # 主手腕(0) ↔ 上身左腕(26)
+
+# 单主手 + 上身：图邻接 = 主手边 + 上身边(已偏移) + 跨部件桥接边（索引对齐 0..26）
+SKELETON_EDGES: list[tuple[int, int]] = (
+    list(HAND_EDGES) + POSE_EDGES_GLOBAL + HAND_POSE_BRIDGE
+)
+
+
+def assert_graph_connected(num_points: int = NUM_POINTS) -> None:
+    """断言 27 点骨架图连通（所有节点均可从根点 0 BFS 到达）。
+
+    用于回归测试：一旦 POSE_EDGES 偏移或桥接边被误删，这里会立即失败。
+    """
+    adj = build_adjacency(num_points, self_loop=False)
+    seen = {0}
+    q = [0]
+    while q:
+        u = q.pop()
+        for v in range(num_points):
+            if adj[u, v] > 0 and v not in seen:
+                seen.add(v)
+                q.append(v)
+    missing = [v for v in range(num_points) if v not in seen]
+    if missing:
+        raise AssertionError(f"骨架图存在孤立点（未连通）：{missing}")
 
 
 def build_adjacency(num_points: int = NUM_POINTS, self_loop: bool = True) -> np.ndarray:

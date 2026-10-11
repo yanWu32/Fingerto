@@ -83,7 +83,10 @@ def parse_args(argv=None):
     p.add_argument("--mock", action="store_true", help="在合成数据上冒烟训练")
     p.add_argument("--synthetic", action="store_true",
                    help="在 data/synthetic 合成数据集上做真实训练（含 val/test 评估）")
-    p.add_argument("--data-root", default=None, help="真实 .npz 目录")
+    p.add_argument("--data-root", default=None, help="真实 .npz 目录（单文件 skeleton/label 格式）")
+    p.add_argument("--wlasl-root", default=None,
+                   help="WLASL 多样本 npz 目录（含 npz/{train,val,test}.npz 与 glosses.txt）；"
+                        "真实英文 ASL 对照实验入口")
     p.add_argument("--model", default=None, choices=["stgcn", "transformer_gcn", "cnn_lstm"])
     p.add_argument("--num-classes", type=int, default=None)
     p.add_argument("--epochs", type=int, default=None)
@@ -146,6 +149,20 @@ def main(argv=None):
         num_classes = len(classes)
         print(f"[train] train={len(loaders['train'].dataset)}  "
               f"val={len(loaders['val'].dataset)}  test={len(loaders['test'].dataset)}")
+    elif args.wlasl_root is not None:
+        from recognition.dataset import build_wlasl_dataloader
+        print(f"[train] WLASL 真实数据模式：{args.wlasl_root}")
+        loaders, classes = build_wlasl_dataloader(
+            args.wlasl_root, batch_size=batch_size, max_frames=max_frames,
+            pad_mode=pad_mode, num_workers=num_workers,
+        )
+        loader = loaders.get("train")
+        eval_loaders = {k: v for k, v in loaders.items() if k != "train"}
+        num_classes = len(classes)
+        print(f"[train] train={len(loader.dataset) if loader else 0}  "
+              f"val={len(eval_loaders.get('val', []) and eval_loaders['val'].dataset or [])}  "
+              f"test={len(eval_loaders.get('test', []) and eval_loaders['test'].dataset or [])}  "
+              f"类数={num_classes}")
     elif args.mock or args.data_root is None:
         print(f"[train] mock 模式：合成数据，num_classes={num_classes}")
         loader, classes = build_dataloader(

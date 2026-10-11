@@ -131,10 +131,13 @@ python tools/verify_perception.py  # MediaPipe 感知层验证
 
 | 预案 | 数据集 | 说明 |
 |---|---|---|
-| A（首选） | **ISW-1000** | 约 1000 中文手语词，仅用其骨骼模态；正在申请中 |
-| B（降级） | **CSL** | 合肥工大中文手语孤立词集，含 RGB / 深度 / 骨骼 |
+| A（首选） | **ISW-1000** | 约 1000 中文手语词，仅用其骨骼模态；正在申请中（需本人发申请邮件） |
+| B（降级） | **CSL** | 中科大中文手语孤立词集（500 词，自带 25 关节骨骼）；需导师签署 Release Agreement 后申请 |
 | C（保底） | 自采最小集 | 本人录制高频词，MediaPipe 提骨架，跑通端到端管线 |
+| **D（真实对照，已落地）** | **WLASL100** | 英文美式手语（ASL）视频集；用户已下载 665/2038 视频到 `E:\Program\datasets\WLASL100`，抽 27 点骨架做「方法跨语种泛化」对照基线（**非中文主实验**） |
 
+> ⚠️ 真实数据说明：中文数据集（ISW-1000 / CSL）均为申请制，不能裸下载；
+> WLASL 是英文 ASL，仅作对照。论文主实验仍以中文数据集为准，外部效度受申请进度影响。
 > 数据集待定**不阻塞开发**：感知层、切分、智能体层（可用 mock gloss）、
 > 应用层与消融评测脚本均可先行实现。
 
@@ -159,11 +162,13 @@ python tools/verify_perception.py  # MediaPipe 感知层验证
 - [x] **运行环境配置**（Anaconda `fingerto` / Python 3.10 / torch+CUDA / MediaPipe 0.10.14）
 - [x] 感知层：MediaPipe 提取单主手 21 点 + 上身 6 点 = 27 点骨架（`perception/`）
 - [x] 手势切分：运动能量粗切分 + 滑动窗口（`segmentation/segmenter.py`）
-- [x] 识别层：ST-GCN 基线 + Transformer-GCN + CNN-LSTM，输出 gloss JSON（`recognition/`，已 commit c320c1b）
+- [x] 识别层：ST-GCN 基线 + Transformer-GCN + CNN-LSTM，输出 gloss JSON（`recognition/`，commit c320c1b / d8288b8）
+  - [x] **修复骨架图连通性 bug**（graph.py：POSE_EDGES 未偏移 + 缺 HAND→POSE 跨边，导致上身 21-26 点被误判 center；已补偏移与桥接边并加连通性断言）
 - [x] 智能体层：三步提示管线 + 对话状态 + System A/B/C/D + 缓存 + LLM 客户端（`agent/`）
-- [x] 数据层：合成 60 类 + CSL/WLASL 替代加载器（`data/`）
-- [ ] 应用层：Gradio 端到端 Demo（`app/`，进行中）
-- [ ] 实验层：消融评测脚本与指标采集（`experiments/`，进行中）
+- [x] 数据层：合成 60 类 + CSL/WLASL 加载器与 WLASL→27 点提取管线（`data/`）
+  - [~] **真实数据实验进行中**：WLASL100（665 视频）抽骨架 + ST-GCN 真实训练，指标待产出（`data/wlasl100_real`）
+- [ ] 应用层：Gradio 端到端 Demo（`app/`，代码已提交 bbe3857，端到端联调待做）
+- [ ] 实验层：消融评测脚本与指标采集（`experiments/`，脚本已提交 bbe3857，跑批待做）
 - [ ] 消融实验与论文撰写
 
 ---

@@ -129,6 +129,86 @@ def build_dataloader(root: str | None = None, classes: list[str] | None = None,
     return loader, ds.classes
 
 
+# ---------------- WLASL 真实数据集加载器（多样本 npz，骨架为 27 点）----------------
+def _load_wlasl_split(npz_dir: str, split: str, max_frames: int, pad_mode: str):
+    """读取 data/wlasl*/npz/{split}.npz（build_dataset 产出的多样本格式）。
+
+    该格式字段：skeletons (N,T,27,3)、labels (N,)、classes (list[str])。
+    这与 GlossDataset 的「单文件 skeleton/label」格式不同，故独立加载。
+    """
+    import numpy as _np
+    path = os.path.join(npz_dir, "npz", f"{split}.npz")
+    if not os.path.isfile(path):
+        return None, None, None
+    data = _np.load(path, allow_pickle=True)
+    sk = _np.asarray(data["skeletons"], dtype=_np.float32)
+    lb = _np.asarray(data["labels"]).astype(_np.int64)
+    cls = [str(c) for c in data["classes"]] if "classes" in data else None
+    return sk, lb, cls
+
+
+class WlaslDataset(Dataset):
+    """读取 WLASL 多样本 npz（真实英文 ASL 对照数据）。"""
+
+    def __init__(self, npz_dir: str, split: str = "train",
+                 max_frames: int = 90, pad_mode: str = "last"):
+        self.max_frames = max_frames
+        self.pad_mode = pad_mode
+        sk, lb, cls = _load_wlasl_split(npz_dir, split, max_frames, pad_mode)
+        if sk is None:
+            self.samples = []
+            self.classes = []
+            return
+        self.samples = [(sk[i], int(lb[i])) for i in range(sk.shape[0])]
+        self.classes = cls if cls is not None else [str(i) for i in range(int(lb.max()) + 1)]
+
+    def __len__(self):
+        return len(self.samples)
+
+    def _normalize_length(self, sk: _np.ndarray) -> _np.ndarray:
+        T = sk.shape[0]
+        if T >= self.max_frames:
+            return sk[: self.max_frames]
+        if self.pad_mode == "zero":
+            pad = _np.zeros((self.max_frames - T, *sk.shape[1:]), dtype=sk.dtype)
+        else:
+            pad = _np.repeat(sk[-1:], self.max_frames - T, axis=0)
+        return _np.concatenate([sk, pad], axis=0)
+
+    def __getitem__(self, idx):
+        sk, label = self.samples[idx]
+        sk = self._normalize_length(sk)
+        return torch.from_numpy(sk.copy()), label
+
+
+def build_wlasl_dataloader(npz_dir: str, batch_size: int = 8, max_frames: int = 90,
+                           pad_mode: str = "last", num_workers: int = 0,
+                           shuffle: bool = True):
+    """构造 WLASL 真实数据的 train/val/test DataLoader 字典。
+
+    Args:
+        npz_dir: 含 npz/{train,val,test}.npz 与 glosses.txt 的目录
+    Returns:
+        (loaders dict, classes list)
+    """
+    loaders: dict = {}
+    classes = None
+    for split in ("train", "val", "test"):
+        ds = WlaslDataset(npz_dir, split=split, max_frames=max_frames, pad_mode=pad_mode)
+        if split == "train":
+            classes = ds.classes
+        if len(ds) == 0:
+            continue
+        loaders[split] = DataLoader(
+            ds, batch_size=batch_size,
+            shuffle=(split == "train" and shuffle),
+            num_workers=num_workers, collate_fn=collate_fn,
+        )
+    if classes is None:
+        classes = []
+    return loaders, classes
+
+
 # ---------------- 纯 numpy mock 生成器（供无 torch 依赖场景或快速造数据） ----------------
 def generate_mock_window(num_points: int = NUM_POINTS, T: int = 60, rng=None):
     """生成单个随机 (T,27,3) 窗口（无标签）。"""
