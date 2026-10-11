@@ -148,12 +148,18 @@ def _load_wlasl_split(npz_dir: str, split: str, max_frames: int, pad_mode: str):
 
 
 class WlaslDataset(Dataset):
-    """读取 WLASL 多样本 npz（真实英文 ASL 对照数据）。"""
+    """读取 WLASL 多样本 npz（真实英文 ASL 对照数据）。
+
+    augment: 训练时做轻量骨骼增强（随机关节抖动 + 时间起止偏移 + 随机丢弃单帧），
+    缓解真实数据样本稀疏（~5 样本/类）导致的过拟合。验证/测试集关闭。
+    """
 
     def __init__(self, npz_dir: str, split: str = "train",
-                 max_frames: int = 90, pad_mode: str = "last"):
+                 max_frames: int = 90, pad_mode: str = "last",
+                 augment: bool = False):
         self.max_frames = max_frames
         self.pad_mode = pad_mode
+        self.augment = augment and (split == "train")
         sk, lb, cls = _load_wlasl_split(npz_dir, split, max_frames, pad_mode)
         if sk is None:
             self.samples = []
@@ -165,18 +171,30 @@ class WlaslDataset(Dataset):
     def __len__(self):
         return len(self.samples)
 
-    def _normalize_length(self, sk: _np.ndarray) -> _np.ndarray:
+    def _normalize_length(self, sk: np.ndarray) -> np.ndarray:
         T = sk.shape[0]
         if T >= self.max_frames:
             return sk[: self.max_frames]
         if self.pad_mode == "zero":
-            pad = _np.zeros((self.max_frames - T, *sk.shape[1:]), dtype=sk.dtype)
+            pad = np.zeros((self.max_frames - T, *sk.shape[1:]), dtype=sk.dtype)
         else:
-            pad = _np.repeat(sk[-1:], self.max_frames - T, axis=0)
-        return _np.concatenate([sk, pad], axis=0)
+            pad = np.repeat(sk[-1:], self.max_frames - T, axis=0)
+        return np.concatenate([sk, pad], axis=0)
+
+    @staticmethod
+    def _augment(sk: np.ndarray, rng: np.random.Generator) -> np.ndarray:
+        # 关节坐标抖动（σ=0.01，相对肩宽归一化尺度下很小）
+        sk = sk + rng.normal(0.0, 0.01, size=sk.shape).astype(sk.dtype)
+        # 随机时间起止偏移：把序列循环平移最多 ±8 帧
+        shift = int(rng.integers(-8, 9))
+        if shift != 0:
+            sk = np.roll(sk, shift, axis=0)
+        return sk
 
     def __getitem__(self, idx):
         sk, label = self.samples[idx]
+        if self.augment:
+            sk = self._augment(sk, np.random.default_rng((idx + 1) * 7919))
         sk = self._normalize_length(sk)
         return torch.from_numpy(sk.copy()), label
 
@@ -194,7 +212,8 @@ def build_wlasl_dataloader(npz_dir: str, batch_size: int = 8, max_frames: int = 
     loaders: dict = {}
     classes = None
     for split in ("train", "val", "test"):
-        ds = WlaslDataset(npz_dir, split=split, max_frames=max_frames, pad_mode=pad_mode)
+        ds = WlaslDataset(npz_dir, split=split, max_frames=max_frames,
+                          pad_mode=pad_mode, augment=(split == "train"))
         if split == "train":
             classes = ds.classes
         if len(ds) == 0:
