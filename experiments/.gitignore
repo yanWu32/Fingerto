@@ -1,2 +1,10 @@
-# 消融实验落盘结果（mock 产出，体积小；真实数据到位后可重新生成）
-results/
+# 消融实验落盘结果：默认忽略（多为 mock/可重生成产物），
+# 但**已入库的结论性结果**用白名单显式跟踪（体积小、可复现、论文直接引用）：
+#   - ablation_metrics.csv / .json ：消融 A/B/C/D 指标表
+#   - wlasl100_real_training.md   ：WLASL100 真实数据训练结论
+# 其余大体积/临时产物（如 *.pt、中间 npz、*_tmp.*）仍保持忽略。
+results/*
+!results/
+!results/ablation_metrics.csv
+!results/ablation_metrics.json
+!results/wlasl100_real_training.md

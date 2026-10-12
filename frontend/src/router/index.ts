@@ -1,0 +1,34 @@
+import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
+
+// 路由懒加载（规范 4.5 / 性能准则）：首屏只加载当前页面代码
+const routes: RouteRecordRaw[] = [
+  {
+    path: '/',
+    name: 'home',
+    component: () => import('@/views/HomeView.vue'),
+    meta: { title: '首页' },
+  },
+  {
+    path: '/about',
+    name: 'about',
+    component: () => import('@/views/AboutView.vue'),
+    meta: { title: '关于' },
+  },
+]
+
+const router = createRouter({
+  history: createWebHistory(),
+  routes,
+  scrollBehavior() {
+    return { top: 0 }
+  },
+})
+
+// 路由守卫：仅做标题设置；真实权限校验由后端接口兜底（规范 4.5）
+router.afterEach((to) => {
+  document.title = to.meta.title
+    ? `${to.meta.title} · 手语对话系统`
+    : '手语对话系统'
+})
+
+export default router

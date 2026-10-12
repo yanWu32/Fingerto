@@ -1,0 +1,496 @@
+{
+  "generated_at": "2026-10-10T22:42:05",
+  "mode": "mock",
+  "data_info": {
+    "available": false,
+    "note": "未找到 data/synthetic/test.npz，使用 mock 场景"
+  },
+  "system_names": [
+    "A",
+    "B",
+    "C",
+    "D"
+  ],
+  "system_labels": {
+    "A": "RuleTemplate(规则基线)",
+    "B": "NoStateLLM(无状态)",
+    "C": "FullStateLLM(主系统)",
+    "D": "FineTunedLocal(退化→C)"
+  },
+  "scenarios": [
+    {
+      "id": "isolated_word",
+      "name": "孤立词翻译"
+    },
+    {
+      "id": "low_conf_disambig",
+      "name": "低置信度消歧"
+    },
+    {
+      "id": "coreference",
+      "name": "多轮指代"
+    },
+    {
+      "id": "user_correction",
+      "name": "用户纠正"
+    },
+    {
+      "id": "polysemous",
+      "name": "多义手势"
+    }
+  ],
+  "metrics": {
+    "isolated_word": {
+      "A": {
+        "bleu": 1.0,
+        "rouge1": 1.0,
+        "rougeL": 1.0,
+        "intent_accuracy": 1.0,
+        "clarification_rate": 0.0,
+        "completion_rate": 1.0,
+        "eot_latency_ms": 0.013900000000011126
+      },
+      "B": {
+        "bleu": 1.0,
+        "rouge1": 1.0,
+        "rougeL": 1.0,
+        "intent_accuracy": 1.0,
+        "clarification_rate": 0.0,
+        "completion_rate": 1.0,
+        "eot_latency_ms": 0.07940000000006275
+      },
+      "C": {
+        "bleu": 1.0,
+        "rouge1": 1.0,
+        "rougeL": 1.0,
+        "intent_accuracy": 1.0,
+        "clarification_rate": 0.0,
+        "completion_rate": 1.0,
+        "eot_latency_ms": 0.10870000000007263
+      },
+      "D": {
+        "bleu": 1.0,
+        "rouge1": 1.0,
+        "rougeL": 1.0,
+        "intent_accuracy": 1.0,
+        "clarification_rate": 0.0,
+        "completion_rate": 1.0,
+        "eot_latency_ms": 0.033300000000013874
+      }
+    },
+    "low_conf_disambig": {
+      "A": {
+        "bleu": 1.0,
+        "rouge1": 1.0,
+        "rougeL": 1.0,
+        "intent_accuracy": 1.0,
+        "clarification_rate": 0.0,
+        "completion_rate": 0.0,
+        "eot_latency_ms": 0.006800000000084516
+      },
+      "B": {
+        "bleu": 1.0,
+        "rouge1": 1.0,
+        "rougeL": 1.0,
+        "intent_accuracy": 1.0,
+        "clarification_rate": 0.0,
+        "completion_rate": 0.0,
+        "eot_latency_ms": 0.007499999999938112
+      },
+      "C": {
+        "bleu": 1.0,
+        "rouge1": 1.0,
+        "rougeL": 1.0,
+        "intent_accuracy": 1.0,
+        "clarification_rate": 1.0,
+        "completion_rate": 1.0,
+        "eot_latency_ms": 0.1706999999999681
+      },
+      "D": {
+        "bleu": 1.0,
+        "rouge1": 1.0,
+        "rougeL": 1.0,
+        "intent_accuracy": 1.0,
+        "clarification_rate": 1.0,
+        "completion_rate": 1.0,
+        "eot_latency_ms": 0.04170000000003338
+      }
+    },
+    "coreference": {
+      "A": {
+        "bleu": 1.0,
+        "rouge1": 1.0,
+        "rougeL": 1.0,
+        "intent_accuracy": 0.5,
+        "clarification_rate": 0.0,
+        "completion_rate": 1.0,
+        "eot_latency_ms": 0.005249999999956678
+      },
+      "B": {
+        "bleu": 1.0,
+        "rouge1": 1.0,
+        "rougeL": 1.0,
+        "intent_accuracy": 0.0,
+        "clarification_rate": 0.0,
+        "completion_rate": 1.0,
+        "eot_latency_ms": 0.005300000000041383
+      },
+      "C": {
+        "bleu": 1.0,
+        "rouge1": 1.0,
+        "rougeL": 1.0,
+        "intent_accuracy": 1.0,
+        "clarification_rate": 0.0,
+        "completion_rate": 1.0,
+        "eot_latency_ms": 0.05100000000002325
+      },
+      "D": {
+        "bleu": 1.0,
+        "rouge1": 1.0,
+        "rougeL": 1.0,
+        "intent_accuracy": 1.0,
+        "clarification_rate": 0.0,
+        "completion_rate": 1.0,
+        "eot_latency_ms": 0.02794999999999881
+      }
+    },
+    "user_correction": {
+      "A": {
+        "bleu": 1.0,
+        "rouge1": 1.0,
+        "rougeL": 1.0,
+        "intent_accuracy": 1.0,
+        "clarification_rate": 0.0,
+        "completion_rate": 1.0,
+        "eot_latency_ms": 0.005050000000006438
+      },
+      "B": {
+        "bleu": 1.0,
+        "rouge1": 1.0,
+        "rougeL": 1.0,
+        "intent_accuracy": 0.0,
+        "clarification_rate": 0.0,
+        "completion_rate": 1.0,
+        "eot_latency_ms": 0.005550000000020816
+      },
+      "C": {
+        "bleu": 1.0,
+        "rouge1": 1.0,
+        "rougeL": 1.0,
+        "intent_accuracy": 1.0,
+        "clarification_rate": 0.0,
+        "completion_rate": 1.0,
+        "eot_latency_ms": 0.020799999999987495
+      },
+      "D": {
+        "bleu": 1.0,
+        "rouge1": 1.0,
+        "rougeL": 1.0,
+        "intent_accuracy": 1.0,
+        "clarification_rate": 0.0,
+        "completion_rate": 1.0,
+        "eot_latency_ms": 0.01909999999999412
+      }
+    },
+    "polysemous": {
+      "A": {
+        "bleu": 1.0,
+        "rouge1": 1.0,
+        "rougeL": 1.0,
+        "intent_accuracy": 1.0,
+        "clarification_rate": 0.0,
+        "completion_rate": 0.0,
+        "eot_latency_ms": 0.004400000000015503
+      },
+      "B": {
+        "bleu": 1.0,
+        "rouge1": 1.0,
+        "rougeL": 1.0,
+        "intent_accuracy": 1.0,
+        "clarification_rate": 0.0,
+        "completion_rate": 0.0,
+        "eot_latency_ms": 0.005100000000091143
+      },
+      "C": {
+        "bleu": 1.0,
+        "rouge1": 1.0,
+        "rougeL": 1.0,
+        "intent_accuracy": 1.0,
+        "clarification_rate": 1.0,
+        "completion_rate": 1.0,
+        "eot_latency_ms": 0.026599999999987745
+      },
+      "D": {
+        "bleu": 1.0,
+        "rouge1": 1.0,
+        "rougeL": 1.0,
+        "intent_accuracy": 1.0,
+        "clarification_rate": 1.0,
+        "completion_rate": 1.0,
+        "eot_latency_ms": 0.02160000000006601
+      }
+    }
+  },
+  "flat": [
+    {
+      "scenario": "isolated_word",
+      "scenario_name": "孤立词翻译",
+      "system": "A",
+      "system_label": "RuleTemplate(规则基线)",
+      "bleu": 1.0,
+      "rouge1": 1.0,
+      "rougeL": 1.0,
+      "intent_accuracy": 1.0,
+      "clarification_rate": 0.0,
+      "completion_rate": 1.0,
+      "eot_latency_ms": 0.013900000000011126
+    },
+    {
+      "scenario": "isolated_word",
+      "scenario_name": "孤立词翻译",
+      "system": "B",
+      "system_label": "NoStateLLM(无状态)",
+      "bleu": 1.0,
+      "rouge1": 1.0,
+      "rougeL": 1.0,
+      "intent_accuracy": 1.0,
+      "clarification_rate": 0.0,
+      "completion_rate": 1.0,
+      "eot_latency_ms": 0.07940000000006275
+    },
+    {
+      "scenario": "isolated_word",
+      "scenario_name": "孤立词翻译",
+      "system": "C",
+      "system_label": "FullStateLLM(主系统)",
+      "bleu": 1.0,
+      "rouge1": 1.0,
+      "rougeL": 1.0,
+      "intent_accuracy": 1.0,
+      "clarification_rate": 0.0,
+      "completion_rate": 1.0,
+      "eot_latency_ms": 0.10870000000007263
+    },
+    {
+      "scenario": "isolated_word",
+      "scenario_name": "孤立词翻译",
+      "system": "D",
+      "system_label": "FineTunedLocal(退化→C)",
+      "bleu": 1.0,
+      "rouge1": 1.0,
+      "rougeL": 1.0,
+      "intent_accuracy": 1.0,
+      "clarification_rate": 0.0,
+      "completion_rate": 1.0,
+      "eot_latency_ms": 0.033300000000013874
+    },
+    {
+      "scenario": "low_conf_disambig",
+      "scenario_name": "低置信度消歧",
+      "system": "A",
+      "system_label": "RuleTemplate(规则基线)",
+      "bleu": 1.0,
+      "rouge1": 1.0,
+      "rougeL": 1.0,
+      "intent_accuracy": 1.0,
+      "clarification_rate": 0.0,
+      "completion_rate": 0.0,
+      "eot_latency_ms": 0.006800000000084516
+    },
+    {
+      "scenario": "low_conf_disambig",
+      "scenario_name": "低置信度消歧",
+      "system": "B",
+      "system_label": "NoStateLLM(无状态)",
+      "bleu": 1.0,
+      "rouge1": 1.0,
+      "rougeL": 1.0,
+      "intent_accuracy": 1.0,
+      "clarification_rate": 0.0,
+      "completion_rate": 0.0,
+      "eot_latency_ms": 0.007499999999938112
+    },
+    {
+      "scenario": "low_conf_disambig",
+      "scenario_name": "低置信度消歧",
+      "system": "C",
+      "system_label": "FullStateLLM(主系统)",
+      "bleu": 1.0,
+      "rouge1": 1.0,
+      "rougeL": 1.0,
+      "intent_accuracy": 1.0,
+      "clarification_rate": 1.0,
+      "completion_rate": 1.0,
+      "eot_latency_ms": 0.1706999999999681
+    },
+    {
+      "scenario": "low_conf_disambig",
+      "scenario_name": "低置信度消歧",
+      "system": "D",
+      "system_label": "FineTunedLocal(退化→C)",
+      "bleu": 1.0,
+      "rouge1": 1.0,
+      "rougeL": 1.0,
+      "intent_accuracy": 1.0,
+      "clarification_rate": 1.0,
+      "completion_rate": 1.0,
+      "eot_latency_ms": 0.04170000000003338
+    },
+    {
+      "scenario": "coreference",
+      "scenario_name": "多轮指代",
+      "system": "A",
+      "system_label": "RuleTemplate(规则基线)",
+      "bleu": 1.0,
+      "rouge1": 1.0,
+      "rougeL": 1.0,
+      "intent_accuracy": 0.5,
+      "clarification_rate": 0.0,
+      "completion_rate": 1.0,
+      "eot_latency_ms": 0.005249999999956678
+    },
+    {
+      "scenario": "coreference",
+      "scenario_name": "多轮指代",
+      "system": "B",
+      "system_label": "NoStateLLM(无状态)",
+      "bleu": 1.0,
+      "rouge1": 1.0,
+      "rougeL": 1.0,
+      "intent_accuracy": 0.0,
+      "clarification_rate": 0.0,
+      "completion_rate": 1.0,
+      "eot_latency_ms": 0.005300000000041383
+    },
+    {
+      "scenario": "coreference",
+      "scenario_name": "多轮指代",
+      "system": "C",
+      "system_label": "FullStateLLM(主系统)",
+      "bleu": 1.0,
+      "rouge1": 1.0,
+      "rougeL": 1.0,
+      "intent_accuracy": 1.0,
+      "clarification_rate": 0.0,
+      "completion_rate": 1.0,
+      "eot_latency_ms": 0.05100000000002325
+    },
+    {
+      "scenario": "coreference",
+      "scenario_name": "多轮指代",
+      "system": "D",
+      "system_label": "FineTunedLocal(退化→C)",
+      "bleu": 1.0,
+      "rouge1": 1.0,
+      "rougeL": 1.0,
+      "intent_accuracy": 1.0,
+      "clarification_rate": 0.0,
+      "completion_rate": 1.0,
+      "eot_latency_ms": 0.02794999999999881
+    },
+    {
+      "scenario": "user_correction",
+      "scenario_name": "用户纠正",
+      "system": "A",
+      "system_label": "RuleTemplate(规则基线)",
+      "bleu": 1.0,
+      "rouge1": 1.0,
+      "rougeL": 1.0,
+      "intent_accuracy": 1.0,
+      "clarification_rate": 0.0,
+      "completion_rate": 1.0,
+      "eot_latency_ms": 0.005050000000006438
+    },
+    {
+      "scenario": "user_correction",
+      "scenario_name": "用户纠正",
+      "system": "B",
+      "system_label": "NoStateLLM(无状态)",
+      "bleu": 1.0,
+      "rouge1": 1.0,
+      "rougeL": 1.0,
+      "intent_accuracy": 0.0,
+      "clarification_rate": 0.0,
+      "completion_rate": 1.0,
+      "eot_latency_ms": 0.005550000000020816
+    },
+    {
+      "scenario": "user_correction",
+      "scenario_name": "用户纠正",
+      "system": "C",
+      "system_label": "FullStateLLM(主系统)",
+      "bleu": 1.0,
+      "rouge1": 1.0,
+      "rougeL": 1.0,
+      "intent_accuracy": 1.0,
+      "clarification_rate": 0.0,
+      "completion_rate": 1.0,
+      "eot_latency_ms": 0.020799999999987495
+    },
+    {
+      "scenario": "user_correction",
+      "scenario_name": "用户纠正",
+      "system": "D",
+      "system_label": "FineTunedLocal(退化→C)",
+      "bleu": 1.0,
+      "rouge1": 1.0,
+      "rougeL": 1.0,
+      "intent_accuracy": 1.0,
+      "clarification_rate": 0.0,
+      "completion_rate": 1.0,
+      "eot_latency_ms": 0.01909999999999412
+    },
+    {
+      "scenario": "polysemous",
+      "scenario_name": "多义手势",
+      "system": "A",
+      "system_label": "RuleTemplate(规则基线)",
+      "bleu": 1.0,
+      "rouge1": 1.0,
+      "rougeL": 1.0,
+      "intent_accuracy": 1.0,
+      "clarification_rate": 0.0,
+      "completion_rate": 0.0,
+      "eot_latency_ms": 0.004400000000015503
+    },
+    {
+      "scenario": "polysemous",
+      "scenario_name": "多义手势",
+      "system": "B",
+      "system_label": "NoStateLLM(无状态)",
+      "bleu": 1.0,
+      "rouge1": 1.0,
+      "rougeL": 1.0,
+      "intent_accuracy": 1.0,
+      "clarification_rate": 0.0,
+      "completion_rate": 0.0,
+      "eot_latency_ms": 0.005100000000091143
+    },
+    {
+      "scenario": "polysemous",
+      "scenario_name": "多义手势",
+      "system": "C",
+      "system_label": "FullStateLLM(主系统)",
+      "bleu": 1.0,
+      "rouge1": 1.0,
+      "rougeL": 1.0,
+      "intent_accuracy": 1.0,
+      "clarification_rate": 1.0,
+      "completion_rate": 1.0,
+      "eot_latency_ms": 0.026599999999987745
+    },
+    {
+      "scenario": "polysemous",
+      "scenario_name": "多义手势",
+      "system": "D",
+      "system_label": "FineTunedLocal(退化→C)",
+      "bleu": 1.0,
+      "rouge1": 1.0,
+      "rougeL": 1.0,
+      "intent_accuracy": 1.0,
+      "clarification_rate": 1.0,
+      "completion_rate": 1.0,
+      "eot_latency_ms": 0.02160000000006601
+    }
+  ]
+}
