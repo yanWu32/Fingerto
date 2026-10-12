@@ -67,3 +67,8 @@ Thumbs.db
 htmlcov/
 node_modules/
 node_modules.orig/
+
+# ---------- 前端构建产物（不入库） ----------
+*.tsbuildinfo
+vite.config.js
+vite.config.d.ts
