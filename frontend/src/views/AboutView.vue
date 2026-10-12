@@ -12,8 +12,8 @@ const layers = [
   <section class="about">
     <h1 class="about__title">关于本系统</h1>
     <p class="about__lead">
-      本项目为「基于 LLM 智能体的手语对话系统」的前端演示界面，采用前后端分离架构，
-      后端仅提供 HTTP JSON 接口，前端负责渲染与交互。
+      本项目为「基于 LLM 智能体的手语对话系统」的前端演示界面，采用前后端分离架构， 后端仅提供 HTTP
+      JSON 接口，前端负责渲染与交互。
     </p>
 
     <h2 class="about__subtitle">四层架构</h2>
@@ -24,9 +24,7 @@ const layers = [
       </li>
     </ul>
 
-    <p class="about__note">
-      当前为前端首版骨架（占位页），后端接口接入与页面细化将逐步完善。
-    </p>
+    <p class="about__note">当前为前端首版骨架（占位页），后端接口接入与页面细化将逐步完善。</p>
   </section>
 </template>
 

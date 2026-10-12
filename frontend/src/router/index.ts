@@ -14,6 +14,13 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/AboutView.vue'),
     meta: { title: '关于' },
   },
+  {
+    // 404：catch-all 必须放在最后，匹配所有未定义路由
+    path: '/:pathMatch(.*)*',
+    name: 'not-found',
+    component: () => import('@/views/NotFoundView.vue'),
+    meta: { title: '页面不存在' },
+  },
 ]
 
 const router = createRouter({
@@ -26,9 +33,7 @@ const router = createRouter({
 
 // 路由守卫：仅做标题设置；真实权限校验由后端接口兜底（规范 4.5）
 router.afterEach((to) => {
-  document.title = to.meta.title
-    ? `${to.meta.title} · 手语对话系统`
-    : '手语对话系统'
+  document.title = to.meta.title ? `${to.meta.title} · 手语对话系统` : '手语对话系统'
 })
 
 export default router

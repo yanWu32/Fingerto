@@ -1,22 +1,14 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { mockRecognition, mockAgent } from '@/api/mock'
+import { runPipeline } from '@/api/pipeline'
+import type { AgentResult, GlossResult } from '@/api/types'
+import { USE_MOCK } from '@/utils/env'
 import { formatConfidence, formatTimeRange } from '@/utils/format'
 
-// 首版占位首页：展示系统形态 + 用 mock 数据跑通「识别 → 智能体」链路
-const recognition = ref<{
-  gloss_sequence: string[]
-  confidence: number[]
-  timestamps: [number, number][]
-} | null>(null)
-
-const agent = ref<{
-  natural_language: string
-  intent: string
-  task: string
-  clarification: boolean
-  low_confidence_words: string[]
-} | null>(null)
+// 首页：通过统一 API 层跑通「识别 → 智能体」链路。
+// VITE_USE_MOCK=true 时走内置 mock；置 false 即无缝切换为真实后端 /api/pipeline。
+const recognition = ref<GlossResult | null>(null)
+const agent = ref<AgentResult | null>(null)
 
 const loading = ref(false)
 const error = ref('')
@@ -26,8 +18,9 @@ async function runDemo() {
   error.value = ''
   try {
     // 所有接口请求必须 try/catch（规范 4.4）
-    recognition.value = await mockRecognition()
-    agent.value = await mockAgent()
+    const res = await runPipeline()
+    recognition.value = res.recognition
+    agent.value = res.agent
   } catch (e) {
     error.value = e instanceof Error ? e.message : '加载失败'
   } finally {
@@ -42,20 +35,20 @@ onMounted(runDemo)
   <section class="home">
     <section class="home__hero">
       <h1 class="home__title">基于 LLM 智能体的手语对话系统</h1>
-      <p class="home__subtitle">
-        词级 / 短语级手语对话演示 · 感知 → 识别 → 智能体 → 应用 四层解耦
-      </p>
+      <p class="home__subtitle">词级 / 短语级手语对话演示 · 感知 → 识别 → 智能体 → 应用 四层解耦</p>
     </section>
 
     <section class="home__demo" aria-labelledby="demo-title">
       <div class="home__demo-head">
-        <h2 id="demo-title">识别链路演示（mock 数据）</h2>
+        <h2 id="demo-title">识别链路演示（{{ USE_MOCK ? 'mock 数据' : '真实后端' }}）</h2>
         <button type="button" class="home__btn" :disabled="loading" @click="runDemo">
           {{ loading ? '加载中…' : '重新演示' }}
         </button>
       </div>
 
-      <p v-if="error" role="alert" class="home__error">{{ error }}</p>
+      <p v-if="error" role="alert" class="home__error">
+        {{ error }}
+      </p>
 
       <div v-if="recognition" class="home__card">
         <h3 class="home__card-title">识别层输出（gloss 序列 + 置信度）</h3>
@@ -74,11 +67,12 @@ onMounted(runDemo)
 
       <div v-if="agent" class="home__card">
         <h3 class="home__card-title">智能体层输出</h3>
-        <p class="agent-text">{{ agent.natural_language }}</p>
+        <p class="agent-text">
+          {{ agent.natural_language }}
+        </p>
         <p class="agent-meta">
-          意图：<code>{{ agent.intent }}</code>
-          · 任务：<code>{{ agent.task }}</code>
-          · 需澄清：<code>{{ agent.clarification ? '是' : '否' }}</code>
+          意图：<code>{{ agent.intent }}</code> · 任务：<code>{{ agent.task }}</code> ·
+          需澄清：<code>{{ agent.clarification ? '是' : '否' }}</code>
           <template v-if="agent.low_confidence_words.length">
             · 低置信词：<code>{{ agent.low_confidence_words.join('、') }}</code>
           </template>
