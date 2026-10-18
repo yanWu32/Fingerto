@@ -31,6 +31,9 @@ data/processed/*
 data/.tmp_*/
 data/synthetic/*.npz
 data/wlasl100_real/
+data/isw1000_real/
+data/isw1000_shards/
+data/isw1000_smoke/
 data/_wlasl100_present_meta.json
 data/wlasl_pilot/
 _pilot_extract.log
