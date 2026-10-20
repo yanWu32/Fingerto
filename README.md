@@ -177,4 +177,27 @@ python tools/verify_perception.py  # MediaPipe 感知层验证
 
 ---
 
+## 十、快速预览前端（无需后端）
+
+如果你习惯"运行一个文件就打开网页"的体验，根目录的 `serve.py` 即可一键启动前端 SPA：
+
+```bash
+# 在仓库根目录 Fingerto/ 下执行
+python serve.py                 # 默认 127.0.0.1:5173，自动打开浏览器
+python serve.py --port 8080     # 自定义端口
+python serve.py --no-browser    # 不自动打开浏览器
+python serve.py --backend       # 同时拉起真实后端（app.app）并把 /api 反代到它
+```
+
+说明：
+
+- 前端构建产物在 `frontend/dist`，**默认 mock 模式**（`VITE_USE_MOCK=true`），无需后端即可完整演示
+  「手语视频 → 文本 → 任务执行」全链路（含 `/demo` 页面）。首次使用需先构建：
+  `cd frontend && npm install && npm run build`。
+- SPA 历史路由（如 `/demo` 深链）会自动回退到 `index.html`，刷新不会 404。
+- 带 `--backend` 时会在子线程启动 Gradio 后端并把 `/api/*` 反代过去，从而切换到真实数据
+  （该模式需要 `fingerto` 环境已装 gradio / mediapipe 等依赖）。
+
+---
+
 详细方案见毕设目录下的 `方案确定书.md` 与 `实现方案-全流程.md`；契约与复现见 `docs/层间契约.md`、`docs/环境与复现.md`。
