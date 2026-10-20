@@ -7,6 +7,10 @@ export interface GlossResult {
   gloss_sequence: string[]
   confidence: number[]
   timestamps: [number, number][]
+  /** 可选：每个词的 top1-top2 概率差，判别力指标（后端 margin_top1_top2） */
+  margin_top1_top2?: number[]
+  /** 可选：margin<0.2 标记为低判别力（后端 low_confidence） */
+  low_confidence?: boolean[]
 }
 
 /** 智能体层输出（智能体 → 应用 契约，对应 contract.AGENT_SCHEMA）

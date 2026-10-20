@@ -1,0 +1,1141 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Fingerto 手语识别后端 API",
+    "version": "1.0.0",
+    "description": "手语识别四层链路（感知→切分→识别→智能体）的 HTTP/SSE 契约。逆向自 tests/contract.py 与前端 api/types.ts。统一响应包 {code,msg,data}；code=0 成功，非0见错误表。",
+    "contact": {
+      "name": "Fingerto Team"
+    }
+  },
+  "servers": [
+    {
+      "url": "/api",
+      "description": "统一 baseURL（由 Vite / serve.py 反代，前端禁止写死 IP）"
+    }
+  ],
+  "tags": [
+    {
+      "name": "health",
+      "description": "依赖就绪探针（用于前端降级判断）"
+    },
+    {
+      "name": "recognition",
+      "description": "识别层：视频→gloss 序列"
+    },
+    {
+      "name": "pipeline",
+      "description": "端到端：视频→识别+智能体"
+    },
+    {
+      "name": "pipeline-stream",
+      "description": "端到端分阶段流式（SSE）"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    },
+    "schemas": {
+      "ApiEnvelope": {
+        "type": "object",
+        "required": [
+          "code",
+          "msg",
+          "data"
+        ],
+        "properties": {
+          "code": {
+            "type": "integer",
+            "description": "业务码；0 成功，非0见错误表",
+            "example": 0
+          },
+          "msg": {
+            "type": "string",
+            "description": "提示/错误文案（由后端给，前端不编造）",
+            "example": "success"
+          },
+          "data": {
+            "description": "业务数据，结构见各接口 data 字段",
+            "nullable": true
+          }
+        }
+      },
+      "ErrorEnvelope": {
+        "type": "object",
+        "required": [
+          "code",
+          "msg"
+        ],
+        "properties": {
+          "code": {
+            "type": "integer",
+            "example": 400
+          },
+          "msg": {
+            "type": "string",
+            "example": "仅支持 mp4/avi/mov/webm 视频"
+          },
+          "data": {
+            "nullable": true
+          }
+        }
+      },
+      "GlossSchema": {
+        "type": "object",
+        "description": "识别层→智能体层契约（tests/contract.GLOSS_SCHEMA + 可选判别力字段）",
+        "required": [
+          "gloss_sequence",
+          "confidence",
+          "timestamps"
+        ],
+        "properties": {
+          "gloss_sequence": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "手语词序列",
+            "example": [
+              "我",
+              "冷",
+              "窗",
+              "关"
+            ]
+          },
+          "confidence": {
+            "type": "array",
+            "items": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "description": "与 gloss_sequence 等长",
+            "example": [
+              0.92,
+              0.58,
+              0.91,
+              0.85
+            ]
+          },
+          "timestamps": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 2,
+              "maxItems": 2
+            },
+            "description": "单位秒，[start,end]，start<=end",
+            "example": [
+              [
+                0,
+                0.4
+              ],
+              [
+                0.5,
+                0.9
+              ],
+              [
+                1,
+                1.4
+              ],
+              [
+                1.5,
+                1.9
+              ]
+            ]
+          },
+          "margin_top1_top2": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "description": "可选：每个词的 top1-top2 概率差，判别力指标",
+            "example": [
+              0.3,
+              0.1,
+              0.4,
+              0.2
+            ]
+          },
+          "low_confidence": {
+            "type": "array",
+            "items": {
+              "type": "boolean"
+            },
+            "description": "可选：margin<0.2 标记为低判别力",
+            "example": [
+              false,
+              true,
+              false,
+              false
+            ]
+          }
+        }
+      },
+      "AgentSchema": {
+        "type": "object",
+        "description": "智能体层→应用层契约（tests/contract.AGENT_SCHEMA）",
+        "required": [
+          "natural_language",
+          "intent",
+          "task",
+          "clarification",
+          "low_confidence_words"
+        ],
+        "properties": {
+          "natural_language": {
+            "type": "string",
+            "example": "我觉得冷，能关一下窗户吗？"
+          },
+          "intent": {
+            "type": "string",
+            "enum": [
+              "chat",
+              "query",
+              "command",
+              "clarify"
+            ],
+            "example": "command"
+          },
+          "task": {
+            "type": "string",
+            "description": "无任务时为 'none'",
+            "example": "close_window"
+          },
+          "clarification": {
+            "type": "boolean",
+            "example": false
+          },
+          "low_confidence_words": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "example": [
+              "冷"
+            ]
+          }
+        }
+      },
+      "PipelineResult": {
+        "type": "object",
+        "required": [
+          "recognition",
+          "agent"
+        ],
+        "properties": {
+          "recognition": {
+            "$ref": "#/components/schemas/GlossSchema"
+          },
+          "agent": {
+            "$ref": "#/components/schemas/AgentSchema"
+          }
+        },
+        "example": {
+          "recognition": {
+            "gloss_sequence": [
+              "我",
+              "冷",
+              "窗",
+              "关"
+            ],
+            "confidence": [
+              0.92,
+              0.58,
+              0.91,
+              0.85
+            ],
+            "timestamps": [
+              [
+                0,
+                0.4
+              ],
+              [
+                0.5,
+                0.9
+              ],
+              [
+                1,
+                1.4
+              ],
+              [
+                1.5,
+                1.9
+              ]
+            ],
+            "margin_top1_top2": [
+              0.3,
+              0.1,
+              0.4,
+              0.2
+            ],
+            "low_confidence": [
+              false,
+              true,
+              false,
+              false
+            ]
+          },
+          "agent": {
+            "natural_language": "我觉得冷，能关一下窗户吗？",
+            "intent": "command",
+            "task": "close_window",
+            "clarification": false,
+            "low_confidence_words": [
+              "冷"
+            ]
+          }
+        }
+      },
+      "HealthStatus": {
+        "type": "object",
+        "properties": {
+          "ready": {
+            "type": "boolean",
+            "example": true
+          },
+          "deps": {
+            "type": "object",
+            "properties": {
+              "torch": {
+                "type": "boolean",
+                "example": true
+              },
+              "mediapipe": {
+                "type": "boolean",
+                "example": true
+              },
+              "opencv": {
+                "type": "boolean",
+                "example": true
+              }
+            }
+          },
+          "models_loaded": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "example": [
+              "stgcn",
+              "cnn_lstm"
+            ]
+          }
+        }
+      },
+      "SSEEvent": {
+        "type": "object",
+        "description": "SSE 每个事件体（data: {json}）。type 决定其余字段。",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "stage",
+              "perception_done",
+              "segmentation_done",
+              "recognition_window",
+              "recognition_done",
+              "agent_step",
+              "agent_done",
+              "application",
+              "done",
+              "error"
+            ],
+            "example": "segmentation_done"
+          },
+          "stage": {
+            "type": "string",
+            "enum": [
+              "perception",
+              "segmentation",
+              "recognition",
+              "agent_step1",
+              "agent_step2",
+              "agent_step3",
+              "application"
+            ]
+          },
+          "label": {
+            "type": "string",
+            "example": "正在切分手势单元"
+          },
+          "shape": {
+            "type": "string",
+            "example": "[670,27,3]"
+          },
+          "numFrames": {
+            "type": "integer",
+            "example": 670
+          },
+          "fps": {
+            "type": "number",
+            "example": 30
+          },
+          "durationSec": {
+            "type": "number",
+            "example": 22.33
+          },
+          "skeletonUrl": {
+            "type": "string",
+            "example": "/api/skeleton/job-abc123"
+          },
+          "skeleton": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 3,
+                "maxItems": 3
+              },
+              "minItems": 27,
+              "maxItems": 27
+            },
+            "description": "可选内联 (T,27,3)；帧少时直传，否则用 skeletonUrl"
+          },
+          "segments": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "startTime": {
+                  "type": "number"
+                },
+                "endTime": {
+                  "type": "number"
+                }
+              }
+            }
+          },
+          "numSegments": {
+            "type": "integer",
+            "example": 15
+          },
+          "numWindows": {
+            "type": "integer",
+            "example": 15
+          },
+          "window": {
+            "type": "object",
+            "properties": {
+              "startTime": {
+                "type": "number"
+              },
+              "endTime": {
+                "type": "number"
+              },
+              "gloss": {
+                "type": "string"
+              },
+              "confidence": {
+                "type": "number"
+              }
+            },
+            "example": {
+              "startTime": 1,
+              "endTime": 1.3,
+              "gloss": "严重",
+              "confidence": 0.998
+            }
+          },
+          "recognition": {
+            "$ref": "#/components/schemas/GlossSchema"
+          },
+          "agent": {
+            "$ref": "#/components/schemas/AgentSchema"
+          },
+          "step": {
+            "type": "integer",
+            "enum": [
+              1,
+              2,
+              3
+            ],
+            "example": 2
+          },
+          "promptSystem": {
+            "type": "string"
+          },
+          "promptUser": {
+            "type": "string"
+          },
+          "output": {
+            "type": "string",
+            "example": "我觉得冷，能关一下窗户吗？"
+          },
+          "apiPath": {
+            "type": "string",
+            "example": "/api/device/close_window"
+          },
+          "taskName": {
+            "type": "string",
+            "example": "关窗"
+          },
+          "task": {
+            "type": "string",
+            "example": "close_window"
+          },
+          "controllerStatus": {
+            "type": "string",
+            "example": "executed"
+          },
+          "changes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "label": {
+                  "type": "string"
+                },
+                "from": {
+                  "type": "string"
+                },
+                "to": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "code": {
+            "type": "integer",
+            "example": 503
+          },
+          "msg": {
+            "type": "string",
+            "example": "后端推理依赖未就绪（缺 torch/mediapipe）"
+          }
+        }
+      },
+      "SkeletonData": {
+        "type": "object",
+        "properties": {
+          "shape": {
+            "type": "string",
+            "example": "[670,27,3]"
+          },
+          "fps": {
+            "type": "number",
+            "example": 30
+          },
+          "frames": {
+            "type": "integer",
+            "example": 670
+          },
+          "skeleton": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 3,
+                "maxItems": 3
+              },
+              "minItems": 27,
+              "maxItems": 27
+            },
+            "description": "行优先 (T,27,3) float32；建议服务端压缩/gzip"
+          }
+        }
+      },
+      "CancelAck": {
+        "type": "object",
+        "properties": {
+          "jobId": {
+            "type": "string",
+            "example": "job-abc123"
+          },
+          "cancelled": {
+            "type": "boolean",
+            "example": true
+          }
+        }
+      }
+    }
+  },
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "operationId": "getHealth",
+        "security": [],
+        "summary": "依赖就绪探针（前端据 ready=false 自动降级到 mock）",
+        "responses": {
+          "200": {
+            "description": "依赖状态",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ApiEnvelope"
+                    }
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/HealthStatus"
+                    }
+                  }
+                },
+                "example": {
+                  "code": 0,
+                  "msg": "success",
+                  "data": {
+                    "ready": true,
+                    "deps": {
+                      "torch": true,
+                      "mediapipe": true,
+                      "opencv": true
+                    },
+                    "models_loaded": [
+                      "stgcn",
+                      "cnn_lstm"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/recognition": {
+      "post": {
+        "tags": [
+          "recognition"
+        ],
+        "operationId": "postRecognition",
+        "summary": "识别层：上传视频→gloss 序列（同步返回）",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "video"
+                ],
+                "properties": {
+                  "video": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "视频文件；服务端二次校验 MIME/后缀，仅 mp4/avi/mov/webm，≤50MB"
+                  },
+                  "model": {
+                    "type": "string",
+                    "enum": [
+                      "stgcn",
+                      "cnn_lstm",
+                      "transformer_gcn"
+                    ],
+                    "description": "可选，选服务端预载模型；缺省用服务器默认"
+                  },
+                  "device": {
+                    "type": "string",
+                    "description": "可选 cuda/cpu/auto，缺省 auto",
+                    "example": "cuda"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "识别结果（data=GLOSS_SCHEMA）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ApiEnvelope"
+                    }
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/GlossSchema"
+                    }
+                  }
+                },
+                "example": {
+                  "code": 0,
+                  "msg": "success",
+                  "data": {
+                    "gloss_sequence": [
+                      "我",
+                      "冷",
+                      "窗",
+                      "关"
+                    ],
+                    "confidence": [
+                      0.92,
+                      0.58,
+                      0.91,
+                      0.85
+                    ],
+                    "timestamps": [
+                      [
+                        0,
+                        0.4
+                      ],
+                      [
+                        0.5,
+                        0.9
+                      ],
+                      [
+                        1,
+                        1.4
+                      ],
+                      [
+                        1.5,
+                        1.9
+                      ]
+                    ],
+                    "margin_top1_top2": [
+                      0.3,
+                      0.1,
+                      0.4,
+                      0.2
+                    ],
+                    "low_confidence": [
+                      false,
+                      true,
+                      false,
+                      false
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "非法文件/缺 video",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "code": 400,
+                  "msg": "仅支持 mp4/avi/mov/webm 视频"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录/ token 错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "code": 401,
+                  "msg": "未登录"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "超出 50MB",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "code": 413,
+                  "msg": "视频超过 50MB 上限"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "推理依赖未就绪",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "code": 503,
+                  "msg": "后端推理依赖未就绪（缺 torch/mediapipe）"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/pipeline": {
+      "post": {
+        "tags": [
+          "pipeline"
+        ],
+        "operationId": "postPipeline",
+        "summary": "端到端：上传视频→识别+智能体（同步返回全量）",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "video"
+                ],
+                "properties": {
+                  "video": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "视频文件；同 /recognition 校验"
+                  },
+                  "model": {
+                    "type": "string",
+                    "enum": [
+                      "stgcn",
+                      "cnn_lstm",
+                      "transformer_gcn"
+                    ]
+                  },
+                  "device": {
+                    "type": "string",
+                    "example": "cuda"
+                  },
+                  "useAgent": {
+                    "type": "boolean",
+                    "description": "是否跑智能体层（默认 true）",
+                    "default": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "端到端结果（data=PipelineResult）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ApiEnvelope"
+                    }
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/PipelineResult"
+                    }
+                  }
+                },
+                "example": {
+                  "code": 0,
+                  "msg": "success",
+                  "data": {
+                    "recognition": {
+                      "gloss_sequence": [
+                        "我",
+                        "冷",
+                        "窗",
+                        "关"
+                      ],
+                      "confidence": [
+                        0.92,
+                        0.58,
+                        0.91,
+                        0.85
+                      ],
+                      "timestamps": [
+                        [
+                          0,
+                          0.4
+                        ],
+                        [
+                          0.5,
+                          0.9
+                        ],
+                        [
+                          1,
+                          1.4
+                        ],
+                        [
+                          1.5,
+                          1.9
+                        ]
+                      ]
+                    },
+                    "agent": {
+                      "natural_language": "我觉得冷，能关一下窗户吗？",
+                      "intent": "command",
+                      "task": "close_window",
+                      "clarification": false,
+                      "low_confidence_words": [
+                        "冷"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "非法文件",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/schemas/ErrorEnvelope"
+          },
+          "503": {
+            "description": "依赖未就绪",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/pipeline/stream": {
+      "post": {
+        "tags": [
+          "pipeline-stream"
+        ],
+        "operationId": "postPipelineStream",
+        "summary": "端到端分阶段流式（SSE）：边算边渲染",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "video"
+                ],
+                "properties": {
+                  "video": {
+                    "type": "string",
+                    "format": "binary"
+                  },
+                  "jobId": {
+                    "type": "string",
+                    "description": "幂等/断点用，首调可不带"
+                  },
+                  "model": {
+                    "type": "string",
+                    "enum": [
+                      "stgcn",
+                      "cnn_lstm",
+                      "transformer_gcn"
+                    ]
+                  },
+                  "device": {
+                    "type": "string",
+                    "example": "cuda"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "text/event-stream；每行 data: {SSEEvent}\\n\\n。前端用 fetch+ReadableStream 消费（axios 不支持 SSE）",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "$ref": "#/components/schemas/SSEEvent"
+                },
+                "example": "data: {\"type\":\"stage\",\"stage\":\"perception\",\"label\":\"正在抽取骨架\"}\n\ndata: {\"type\":\"perception_done\",\"shape\":\"[670,27,3]\",\"numFrames\":670,\"fps\":30.0,\"durationSec\":22.33,\"skeletonUrl\":\"/api/skeleton/job-abc123\"}\n\ndata: {\"type\":\"segmentation_done\",\"segments\":[{\"startTime\":1.0,\"endTime\":1.3}],\"numSegments\":15,\"numWindows\":15}\n\ndata: {\"type\":\"recognition_window\",\"window\":{\"startTime\":1.0,\"endTime\":1.3,\"gloss\":\"严重\",\"confidence\":0.998}}\n\ndata: {\"type\":\"recognition_done\",\"recognition\":{\"gloss_sequence\":[\"严重\",\"举办\"],\"confidence\":[0.998,0.502],\"timestamps\":[[1.0,1.3],[2.2,2.46]]}}\n\ndata: {\"type\":\"agent_step\",\"step\":2,\"promptSystem\":\"你是手语对话系统的智能体…\",\"promptUser\":\"手语 gloss：严重 举办\",\"output\":\"用户表达了一段内容\"}\n\ndata: {\"type\":\"agent_done\",\"agent\":{\"natural_language\":\"用户表达了一段内容\",\"intent\":\"chat\",\"task\":\"none\",\"clarification\":false,\"low_confidence_words\":[]}}\n\ndata: {\"type\":\"done\",\"recognition\":{\"gloss_sequence\":[\"严重\",\"举办\"],\"confidence\":[0.998,0.502],\"timestamps\":[[1.0,1.3],[2.2,2.46]]},\"agent\":{\"natural_language\":\"用户表达了一段内容\",\"intent\":\"chat\",\"task\":\"none\",\"clarification\":false,\"low_confidence_words\":[]}}\n\n"
+              }
+            }
+          },
+          "400": {
+            "description": "非法文件",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/schemas/ErrorEnvelope"
+          },
+          "503": {
+            "description": "首事件发 error{code:503}",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "$ref": "#/components/schemas/SSEEvent"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/skeleton/{jobId}": {
+      "get": {
+        "tags": [
+          "pipeline-stream"
+        ],
+        "operationId": "getSkeleton",
+        "summary": "按 jobId 拉取 (T,27,3) 骨架（perception_done 给 skeletonUrl 时二次拉取）",
+        "parameters": [
+          {
+            "name": "jobId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "job-abc123"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "骨架数据",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ApiEnvelope"
+                    }
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/SkeletonData"
+                    }
+                  }
+                },
+                "example": {
+                  "code": 0,
+                  "msg": "success",
+                  "data": {
+                    "shape": "[670,27,3]",
+                    "fps": 30,
+                    "frames": 670,
+                    "skeleton": [
+                      [
+                        [
+                          0.1,
+                          0.2,
+                          0.3
+                        ],
+                        [
+                          0.4,
+                          0.5,
+                          0.6
+                        ],
+                        [
+                          "…27 点…"
+                        ]
+                      ]
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "job 不存在/已过期",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "code": 404,
+                  "msg": "job 不存在"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/pipeline/{jobId}/cancel": {
+      "post": {
+        "tags": [
+          "pipeline-stream"
+        ],
+        "operationId": "cancelPipeline",
+        "summary": "取消正在进行的流式任务（前端 AbortController 断连时服务端也停止计算）",
+        "parameters": [
+          {
+            "name": "jobId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "job-abc123"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "取消结果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ApiEnvelope"
+                    }
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/CancelAck"
+                    }
+                  }
+                },
+                "example": {
+                  "code": 0,
+                  "msg": "success",
+                  "data": {
+                    "jobId": "job-abc123",
+                    "cancelled": true
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

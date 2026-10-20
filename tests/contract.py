@@ -59,6 +59,14 @@ GLOSS_SCHEMA = {
     "timestamps": list,            # List[[start, end]] 单位秒，与 gloss_sequence 等长
 }
 
+# 可选字段（不破坏既有校验）：识别层可附加判别力信息，供下游/前端判断可信度。
+# 依据：ISW-1000 实测 top-1 置信度无判别力（判对 0.564 vs 判错 0.505），且模型向少数词塌缩，
+# 故必须显式暴露 top1/top2 间距，避免把 confidence 当作可信度误用。
+GLOSS_OPTIONAL_SCHEMA = {
+    "margin_top1_top2": list,      # List[float] 与 gloss_sequence 等长：top1-top2 概率差
+    "low_confidence": list,        # List[bool]  与 gloss_sequence 等长：margin < 阈值(默认 0.2) 标记
+}
+
 
 def validate_gloss_output(obj: Any) -> bool:
     """校验识别层输出：合法返回 True，失败抛 ValueError（带说明）。
@@ -90,6 +98,21 @@ def validate_gloss_output(obj: Any) -> bool:
     for g in obj["gloss_sequence"]:
         if not isinstance(g, str):
             raise ValueError(f"[gloss] gloss_sequence 元素须为 str，收到 {g!r}")
+    # 可选字段（若存在则校验类型/取值，缺失不报错）
+    if "margin_top1_top2" in obj:
+        if not isinstance(obj["margin_top1_top2"], list) or \
+           len(obj["margin_top1_top2"]) != n:
+            raise ValueError("[gloss] margin_top1_top2 须为与 gloss_sequence 等长的 list")
+        for m in obj["margin_top1_top2"]:
+            if not isinstance(m, (int, float)):
+                raise ValueError(f"[gloss] margin_top1_top2 元素须为数值，收到 {m!r}")
+    if "low_confidence" in obj:
+        if not isinstance(obj["low_confidence"], list) or \
+           len(obj["low_confidence"]) != n:
+            raise ValueError("[gloss] low_confidence 须为与 gloss_sequence 等长的 list")
+        for b in obj["low_confidence"]:
+            if not isinstance(b, bool):
+                raise ValueError(f"[gloss] low_confidence 元素须为 bool，收到 {b!r}")
     return True
 
 
