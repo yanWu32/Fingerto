@@ -23,6 +23,15 @@ export default tseslint.config(
     },
   },
   {
+    // 演示页需要把 prompt / 输出文本中的关键 token 包 <mark> 高亮，只能用 v-html。
+    // 安全性由 utils/sanitize.ts 的 highlightTokens 保证：先转义 HTML 特殊字符、
+    // 再插入自有标签，且有 sanitize.test.ts 的 XSS 用例覆盖（规范 7.1 仍满足）。
+    files: ['src/views/DemoView.vue'],
+    rules: {
+      'vue/no-v-html': 'off',
+    },
+  },
+  {
     rules: {
       'vue/multi-word-component-names': 'off',
       // 下面两条是纯排版规则，与 Prettier 的换行策略直接冲突

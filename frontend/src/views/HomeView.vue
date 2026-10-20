@@ -41,9 +41,12 @@ onMounted(runDemo)
     <section class="home__demo" aria-labelledby="demo-title">
       <div class="home__demo-head">
         <h2 id="demo-title">识别链路演示（{{ USE_MOCK ? 'mock 数据' : '真实后端' }}）</h2>
-        <button type="button" class="home__btn" :disabled="loading" @click="runDemo">
-          {{ loading ? '加载中…' : '重新演示' }}
-        </button>
+        <div class="home__demo-actions">
+          <RouterLink to="/demo" class="home__link">查看全链路演示 →</RouterLink>
+          <button type="button" class="home__btn" :disabled="loading" @click="runDemo">
+            {{ loading ? '加载中…' : '重新演示' }}
+          </button>
+        </div>
       </div>
 
       <p v-if="error" role="alert" class="home__error">
@@ -110,6 +113,27 @@ onMounted(runDemo)
   justify-content: space-between;
   gap: 1rem;
   margin-bottom: 1rem;
+}
+
+.home__demo-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.home__link {
+  padding: 0.5rem 1.1rem;
+  border: 1px solid var(--color-primary, #2563eb);
+  border-radius: var(--radius, 0.75rem);
+  color: var(--color-primary, #2563eb);
+  text-decoration: none;
+  font-size: 0.95rem;
+  white-space: nowrap;
+  transition: background 0.15s ease;
+}
+
+.home__link:hover {
+  background: #eff6ff;
 }
 
 .home__btn {
