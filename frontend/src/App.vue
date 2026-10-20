@@ -11,6 +11,7 @@
       </div>
       <nav class="app-nav" aria-label="主导航">
         <RouterLink to="/" class="app-nav__link"> 首页 </RouterLink>
+        <RouterLink to="/recognize" class="app-nav__link"> 视频识别 </RouterLink>
         <RouterLink to="/demo" class="app-nav__link"> 全链路演示 </RouterLink>
         <RouterLink to="/about" class="app-nav__link"> 关于 </RouterLink>
       </nav>

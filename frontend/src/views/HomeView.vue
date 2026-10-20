@@ -36,6 +36,14 @@ onMounted(runDemo)
     <section class="home__hero">
       <h1 class="home__title">基于 LLM 智能体的手语对话系统</h1>
       <p class="home__subtitle">词级 / 短语级手语对话演示 · 感知 → 识别 → 智能体 → 应用 四层解耦</p>
+      <div class="home__cta">
+        <RouterLink to="/recognize" class="home__cta-link">
+          上传手语视频开始识别 →
+        </RouterLink>
+        <RouterLink to="/demo" class="home__cta-link home__cta-link--ghost">
+          查看全链路脚本演示 →
+        </RouterLink>
+      </div>
     </section>
 
     <section class="home__demo" aria-labelledby="demo-title">
@@ -105,6 +113,30 @@ onMounted(runDemo)
 .home__subtitle {
   color: var(--color-muted-text, #6b7280);
   margin: 0;
+}
+
+.home__cta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  justify-content: center;
+  margin-top: 1.1rem;
+}
+
+.home__cta-link {
+  display: inline-block;
+  padding: 0.6rem 1.2rem;
+  border-radius: 0.6rem;
+  background: var(--color-primary, #2563eb);
+  color: #fff;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.home__cta-link--ghost {
+  background: transparent;
+  color: var(--color-primary, #2563eb);
+  border: 1px solid var(--color-primary, #2563eb);
 }
 
 .home__demo-head {

@@ -72,10 +72,23 @@ function delay(ms: number): Promise<void> {
  * 逐步执行整条流水线，每个阶段回调一次（支持「单步播放」与自动播放）。
  * 所有阶段耗时在真实场景由后端决定；mock 下用 delay 模拟处理耗时。
  */
+/** 取消信号：mock 回退模式下用于中止演示 */
+export interface DemoCanceller {
+  cancelled: boolean
+}
+
+export class DemoCancelledError extends Error {
+  constructor() {
+    super('已取消')
+    this.name = 'DemoCancelledError'
+  }
+}
+
 export async function runFullDemo(
   scenario: DemoScenario,
   onStage: (s: StageSnapshot) => void,
-  stepDelay = 520
+  stepDelay = 520,
+  canceller?: DemoCanceller
 ): Promise<DemoOutput> {
   if (!USE_MOCK) {
     // 真实后端尚未提供 /api/* 的流水线串流；此处保留降级：直接返回结果而不阻塞 UI
@@ -87,12 +100,17 @@ export async function runFullDemo(
     })
   }
 
+  const checkCancel = () => {
+    if (canceller?.cancelled) throw new DemoCancelledError()
+  }
+
   onStage({
     stage: 'sensing',
     label: '读取视频帧',
     layer: '感知层',
     detail: `${scenario.sense.source} · ${scenario.sense.width}×${scenario.sense.height} · ${scenario.sense.fps}fps`,
   })
+  checkCancel()
   await delay(stepDelay)
 
   const frames = scenario.frames.length
@@ -100,6 +118,7 @@ export async function runFullDemo(
     : synthesizeFrames(scenario, scenario.sense.numFrames, scenario.sense.fps)
   scenario.frames = frames
 
+  checkCancel()
   onStage({
     stage: 'skeleton',
     label: '提取 27 点骨架',
@@ -111,6 +130,7 @@ export async function runFullDemo(
       last: frames[frames.length - 1]?.slice(0, 3),
     },
   })
+  checkCancel()
   await delay(stepDelay)
 
   onStage({
@@ -120,6 +140,7 @@ export async function runFullDemo(
     detail: `${scenario.segmentation.numSegments} 个活跃段 → ${scenario.segmentation.numWindows} 个识别窗口`,
     payload: scenario.segmentation,
   })
+  checkCancel()
   await delay(stepDelay)
 
   const gloss = scenario.recognition.glossResult!
@@ -133,6 +154,7 @@ export async function runFullDemo(
       glossResult: gloss,
     },
   })
+  checkCancel()
   await delay(stepDelay)
 
   // ---- 智能体三步 ----
@@ -144,6 +166,7 @@ export async function runFullDemo(
     detail: '低置信词因低置信触发消歧',
     payload: { step: s1, highlight: scenario.steps.highlightTokens },
   })
+  checkCancel()
   await delay(stepDelay)
 
   const s2 = scenario.steps.steps[1]
@@ -154,6 +177,7 @@ export async function runFullDemo(
     detail: 'gloss 序列 → 通顺中文',
     payload: { step: s2, highlight: scenario.steps.highlightTokens },
   })
+  checkCancel()
   await delay(stepDelay)
 
   const s3 = scenario.steps.steps[2]
@@ -164,6 +188,7 @@ export async function runFullDemo(
     detail: '意图识别 + 任务生成',
     payload: { step: s3, highlight: scenario.steps.highlightTokens },
   })
+  checkCancel()
   await delay(stepDelay)
 
   const agent = scenario.steps.agentResult!
@@ -180,6 +205,7 @@ export async function runFullDemo(
       envAfter: scenario.envAfter,
     },
   })
+  checkCancel()
   await delay(stepDelay)
 
   onStage({
