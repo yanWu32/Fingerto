@@ -170,6 +170,7 @@ python tools/verify_perception.py  # MediaPipe 感知层验证
 - [x] 应用层：Gradio 端到端 Demo（`app/app.py` + `pipeline_demo.py`，TASK-003 验收 bbe3857；真实摄像头+LLM API 联调待做）
 - [x] 实验层：消融评测脚本与指标采集（`experiments/`，TASK-004 验收 bbe3857；真实 LLM API 跑批待做）
   - [x] **识别层真实指标已闭环**：`train.py` 输出 Top-1/Top-5；`run_ablation.py` 闭环 5 场景 × 4 系统
+- [x] **四层端到端联调打通**（2026-10-19）：新增 `app/e2e_pipeline.py`，把 `SkeletonSegmenter`(切分) → `Predictor`(识别) → 合并 gloss JSON → `AgentPipeline`(智能体) 串起来，全程过 `tests/contract` 校验；合成连续序列 + 真实 ISW-1000 权重均验证通过（含真实伪连续序列：4 词拼接 → 切分 → 识别出 gloss）。可用 `python -m app.e2e_pipeline [--weights <pt> --classes glosses.txt]` 复跑。
 - [ ] 全链路集成联调（真实摄像头 + 真实 LLM API）
 - [ ] 中文真实数据（ISW-1000 / CSL 申请中）→ 复跑识别层真实指标，替换 WLASL100 为论文主结论
 - [ ] 消融实验（真实 LLM）与论文撰写
