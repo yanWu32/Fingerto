@@ -21,6 +21,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 import time
@@ -83,6 +84,7 @@ def run_budget(dataset_root: str = DEFAULT_DATASET_ROOT,
                shard_dir: str = DEFAULT_SHARD_DIR,
                budget_sec: float = 90.0,
                max_glosses: Optional[int] = None,
+               gloss_list: Optional[List[str]] = None,
                participants: Optional[List[str]] = None,
                T: int = FIXED_T,
                resize_width: int = DEFAULT_RESIZE_WIDTH,
@@ -93,7 +95,12 @@ def run_budget(dataset_root: str = DEFAULT_DATASET_ROOT,
         raise RuntimeError("MediaPipe 不可用（需 mediapipe==0.10.14）")
 
     samples = discover_samples(dataset_root, participants=participants)
-    if max_glosses:
+    if gloss_list is not None:
+        # 显式锁定 gloss 集合（来自 data/isw1000_subset/gloss_plan.json），
+        # 保证跨回合累积的样本始终落在同一组类上（50 词 × 10 人策略）
+        keep = set(gloss_list)
+        samples = [s for s in samples if s["gloss"] in keep]
+    elif max_glosses:
         # 只取前 max_glosses 个中文 gloss（按 Unicode 排序），让样本集中在少数类上，
         # 便于在有限视频数下形成可训练的每类样本数
         zh = sorted({s["gloss"] for s in samples if any('\u4e00' <= c <= '\u9fff' for c in s["gloss"])})
@@ -172,6 +179,9 @@ def main() -> int:
     ap.add_argument("--budget-sec", type=float, default=90.0)
     ap.add_argument("--max-glosses", type=int, default=None,
                     help="只取前 N 个中文 gloss（让样本集中，便于训练）")
+    ap.add_argument("--gloss-list", default=None,
+                    help="显式锁定 gloss 集合：JSON 文件路径（含 'glosses' 或顶层列表）"
+                         "，或直接逗号分隔的字符串")
     ap.add_argument("--participants", nargs="*", default=None)
     ap.add_argument("--T", type=int, default=FIXED_T)
     ap.add_argument("--resize-width", type=int, default=DEFAULT_RESIZE_WIDTH)
@@ -183,11 +193,22 @@ def main() -> int:
         print("[status]", status(args.shard_dir))
         return 0
 
+    gloss_list = None
+    if args.gloss_list:
+        if os.path.isfile(args.gloss_list):
+            _d = json.load(open(args.gloss_list, encoding="utf-8"))
+            gloss_list = _d.get("glosses") or _d.get("per_gloss_total") or _d
+            if isinstance(gloss_list, dict):
+                gloss_list = list(gloss_list.keys())
+        else:
+            gloss_list = [g.strip() for g in args.gloss_list.split(",") if g.strip()]
+
     info = run_budget(
         dataset_root=args.dataset_root,
         shard_dir=args.shard_dir,
         budget_sec=args.budget_sec,
         max_glosses=args.max_glosses,
+        gloss_list=gloss_list,
         participants=args.participants,
         T=args.T,
         resize_width=args.resize_width,

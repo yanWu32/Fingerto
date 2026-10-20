@@ -4,9 +4,14 @@
 故并行改为「每个 Participant 起一个独立进程跑 data/isw1000_extract.py --participants X」，
 每个进程产出自己的 npz/{split}.npz（skeletons/labels/classes），最后用本脚本合并。
 
-为什么需要 remap：每个参与者分片里的 `classes` 是**该参与者自身的类表**，
-`labels` 是相对这个类表的索引。合并时必须先建立**全局类表**，
-再把各分片标签映射到全局索引，否则不同分片的同一 gloss 会拿到不同 label。
+本脚本同时兼容两种分片格式（来自两段时期的抽取器）：
+  - 新格式（data/isw1000_extract_resumable.py 写）：skeletons (N,T,27,3) + glosses (N,) object
+  - 旧格式（data/isw1000_extract.py 写）：skeletons + labels (N,) + classes (本地类表)
+  通过 data/isw1000_extract_resumable.load_shard 统一读成 (skeletons, glosses)，
+  再按 participant 目录名归入 DEFAULT_SPLIT_BY_PARTICIPANT 对应的切分。
+
+为什么需要 remap：全局类表由所有分片出现过的 gloss 排序得到；合并时把每个样本的
+gloss 映射成全局索引，否则不同分片的同一 gloss 会拿到不同 label。
 
 用法：
     python -m data.isw1000_merge                      # 默认读 data/isw1000_shards/*
@@ -28,6 +33,7 @@ if str(_REPO_ROOT) not in sys.path:
 import numpy as np
 
 from data.isw1000_extract import DEFAULT_SPLIT_BY_PARTICIPANT
+from data.isw1000_extract_resumable import load_shard
 from tests.contract import check_skeleton_shape, NUM_POINTS, SKELETON_RANK
 
 DEFAULT_SHARD_DIR = os.path.join("data", "isw1000_shards")
@@ -35,14 +41,16 @@ DEFAULT_OUT = os.path.join("data", "isw1000_real")
 
 
 def build_global_classes(shard_dir: str) -> List[str]:
-    """扫描所有分片，得到全局有序类表。"""
+    """扫描所有分片（兼容新 skeletons/glosses 与旧 skeletons/labels/classes 两种格式），
+    得到全局有序类表。"""
     classes = set()
     for pdir in sorted(Path(shard_dir).iterdir()):
         if not pdir.is_dir() or pdir.name.startswith("_"):
             continue
         for npz in sorted((pdir / "npz").glob("*.npz")):
-            d = np.load(npz, allow_pickle=True)
-            classes.update(str(c) for c in d["classes"])
+            # 复用 load_shard：新格式返回 glosses，旧格式把本地 labels 反查成本地 classes
+            _, gl = load_shard(npz)
+            classes.update(gl)
     return sorted(classes)
 
 
@@ -67,13 +75,13 @@ def merge(shard_dir: str = DEFAULT_SHARD_DIR,
             if not npz_path.exists():
                 print(f"  [warn] 缺少分片 {npz_path}，跳过")
                 continue
-            d = np.load(npz_path, allow_pickle=True)
-            sk = np.asarray(d["skeletons"], dtype=np.float32)
-            local_classes = [str(c) for c in d["classes"]]
-            local_labels = np.asarray(d["labels"]).astype(np.int64)
-            # remap：本地索引 -> 全局索引
-            global_labels = np.array([c2i[local_classes[i]] for i in local_labels],
-                                     dtype=np.int64)
+            # 统一读成 (skeletons, glosses) —— 自动兼容新旧两种格式
+            sk, gl = load_shard(npz_path)
+            if not sk:
+                print(f"  [warn] 分片 {npz_path} 为空，跳过")
+                continue
+            sk = np.asarray(sk, dtype=np.float32)
+            global_labels = np.array([c2i[g] for g in gl], dtype=np.int64)
             sk_list.append(sk)
             lb_list.append(global_labels)
             used.append(p)
