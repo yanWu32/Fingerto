@@ -10,12 +10,12 @@
         <span class="app-header__title">手语对话系统</span>
       </div>
       <nav class="app-nav" aria-label="主导航">
-        <RouterLink to="/" class="app-nav__link">首页</RouterLink>
-        <RouterLink to="/about" class="app-nav__link">关于</RouterLink>
+        <RouterLink to="/" class="app-nav__link"> 首页 </RouterLink>
+        <RouterLink to="/about" class="app-nav__link"> 关于 </RouterLink>
       </nav>
     </header>
 
-    <main class="app-main" id="main">
+    <main id="main" class="app-main">
       <RouterView />
     </main>
 

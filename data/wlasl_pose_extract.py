@@ -166,8 +166,16 @@ def extract_one_video(
     frame_start: Optional[int] = None,
     frame_end: Optional[int] = None,
     T: int = FIXED_T,
+    resize_width: Optional[int] = None,
+    frame_stride: int = 1,
 ) -> Optional[np.ndarray]:
     """读视频 -> 逐帧 27 点 -> 截取 frame_start..frame_end -> pad/截断 -> 归一化。
+
+    Args:
+        resize_width:  >0 时把帧等比缩放至该宽度再送 MediaPipe（默认 None=原尺寸，
+                       与既有 WLASL 行为一致）。竖屏 1080x1920 逐帧跑 Holistic 极慢，
+                       ISW-1000 全量建议设 640 左右。
+        frame_stride:  帧采样步长（默认 1=每帧都处理）。配合 resize 可大幅提速。
 
     Returns:
         (T, 27, 3) float32；视频无法打开 / 无帧时返回 None。
@@ -182,6 +190,7 @@ def extract_one_video(
     # （WLASL 标注里 frame_end=-1 表示「整段视频」，不是「第 -1 帧」）
     f_start = frame_start if (frame_start is not None and frame_start > 0) else 0
     f_end = frame_end if (frame_end is not None and frame_end > 0) else (1 << 30)
+    stride = max(1, int(frame_stride or 1))
 
     frames: List[np.ndarray] = []
     vis_frames: List[np.ndarray] = []
@@ -196,6 +205,14 @@ def extract_one_video(
             continue
         if fidx > f_end:
             break
+        # 区间内按 stride 采样（fidx 相对 f_start 的位置决定）
+        if ((fidx - f_start) % stride) != 0:
+            fidx += 1
+            continue
+        if resize_width and frame is not None and frame.shape[1] > resize_width:
+            h, w = frame.shape[:2]
+            new_h = int(h * (resize_width / float(w)))
+            frame = cv2.resize(frame, (resize_width, new_h), interpolation=cv2.INTER_AREA)
         skel, vis = extractor.extract_frame(frame)
         frames.append(skel)
         vis_frames.append(vis)

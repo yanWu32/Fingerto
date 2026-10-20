@@ -6,7 +6,7 @@
 
 | 数据集 | 状态 | 说明 |
 | --- | --- | --- |
-| ISW-1000 | ⏳ pending | 申请邮件待用户本人发出，暂未入库。此层不依赖它。 |
+| **ISW-1000（中文主实验）** | 🟢 1000 视频/100 类指标已出 | 数据集已就位（`E:\Program\datasets\ISW-1000`，9914 视频 / 1000 词）。当前**「100 词 × 10 人 = 1000 视频」子集已抽完**（train 700 / val 100 / test 200，按 Participant 切分防签名者泄漏）。**CNN-LSTM test Top-1=0.180 / Top-5=0.450**（随机基线 1%，即 ×18 / ×9），显著高于上一轮 500 视频版与 WLASL100 英文对照。详见 `experiments/results/isw1000_100g_training.md`（前一轮 500 结果见 `isw1000_subset_training.md`）。断点续跑 `data/isw1000_extract_resumable.py` + 回合驱动 `data/isw1000_round.py --plan <plan.json>`；继续扩到全量 9914 指标预计大幅跃升。训练：`python recognition/train.py --wlasl-root data/isw1000_real --model cnn_lstm --epochs 80`。 |
 | 临时合成集（CSL 风格骨架） | ✅ 已生成 | `data/synthetic/`：60 类中文孤立手语词，每类 36 样本（train 24 / val 6 / test 6），形状 `(N, T, 27, 3)` float32。 |
 | CSL 真实替代 | 🔧 骨架就绪 | `data/csl_loader.py`：给定原始 RGB 目录 + 标注 csv 即转 27 点 npz，接口与合成集一致；无数据时 import 不报错。 |
 | **WLASL（英文 ASL 对照）** | ⏳ 待用户侧下载 | `data/wlasl_loader.py` + `data/wlasl_pose_extract.py`：英文美式手语视频 → MediaPipe 抽 27 点骨架 → `(T,27,3)` npz。⚠️ **仅作跨语种方法泛化对照基线，不是中文主实验**，gloss 独立存 `data/wlasl/glosses.txt`。代码已就绪；骨架 npz 需用户按 `wlasl_download_guide.md` 在本机下载视频后生成（沙箱网络封了 raw.githubusercontent/huggingface）。 |

@@ -2,9 +2,13 @@
 # 但**已入库的结论性结果**用白名单显式跟踪（体积小、可复现、论文直接引用）：
 #   - ablation_metrics.csv / .json ：消融 A/B/C/D 指标表
 #   - wlasl100_real_training.md   ：WLASL100 真实数据训练结论
+#   - isw1000_subset_training.md  ：ISW-1000 50 词×10 人=500 视频初步中文指标
+#   - isw1000_100g_training.md    ：ISW-1000 100 词×10 人=1000 视频中文指标（扩样）
 # 其余大体积/临时产物（如 *.pt、中间 npz、*_tmp.*）仍保持忽略。
 results/*
 !results/
 !results/ablation_metrics.csv
 !results/ablation_metrics.json
 !results/wlasl100_real_training.md
+!results/isw1000_subset_training.md
+!results/isw1000_100g_training.md
