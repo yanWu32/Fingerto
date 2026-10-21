@@ -16,8 +16,8 @@ import type { PipelineStageName, StageSnapshot } from '@/api/demoPipeline'
 import {
   streamPipeline,
   cancelStream,
+  toUiStage,
   type SseEvent,
-  type StreamStageName,
 } from '@/api/stream'
 import { ensureBackendReady, BackendUnavailableError, fetchSkeleton } from '@/api/backend'
 import type { AgentResult, GlossResult } from '@/api/types'
@@ -156,14 +156,21 @@ async function runReal() {
 
 function onSseEvent(e: SseEvent) {
   switch (e.type) {
-    case 'stage':
+    case 'stage': {
+      // 后端下发 snake_case 阶段名（perception/agent_step1…），需映射成
+      // PipelineFlow 认识的 camelCase UI 阶段名，否则进度条不推进。
+      const ui = toUiStage(e.stage)
       pushStage({
-        stage: e.stage as PipelineStageName,
+        stage: ui,
         label: e.label,
         layer: layerOf(e.stage),
         detail: '',
       })
+      if (ui.startsWith('agentStep')) {
+        activeStep.value = Number(ui.replace('agentStep', ''))
+      }
       break
+    }
     case 'perception_done':
       skeletonShape.value = e.shape
       fps.value = e.fps
@@ -174,12 +181,8 @@ function onSseEvent(e: SseEvent) {
         layer: '感知层',
         detail: `张量 ${e.shape} · ${e.numFrames} 帧 · ${e.fps}fps`,
       })
-      // 若后端随事件内联骨架则直接展示；否则稍后异步拉取
-      if (e.skeleton && e.skeleton.length) {
-        frames.value = e.skeleton as SkeletonFrame[]
-      } else {
-        fetchSkeletonAsync(jobId.value)
-      }
+      // perception_done 只带 skeletonUrl（骨架本体较大），需按 jobId 二次拉取
+      fetchSkeletonAsync(jobId.value)
       break
     case 'segmentation_done':
       segments.value = e.segments
@@ -202,25 +205,51 @@ function onSseEvent(e: SseEvent) {
         detail: `gloss 序列 ${e.recognition.gloss_sequence.length} 词`,
       })
       break
-    case 'agent_step':
-      activeStep.value = e.step
-      agentSteps.push({
-        title: `Step ${e.step}`,
-        promptSystem: e.promptSystem,
-        promptUser: e.promptUser,
-        output: e.output,
-      })
-      pushStage({
-        stage: (`agentStep${e.step}` as StreamStageName) as PipelineStageName,
-        label: `智能体 Step ${e.step}`,
-        layer: '智能体层',
-        detail: 'LLM 提示管线',
-      })
-      break
     case 'agent_done':
       agent.value = e.agent
       // 低置信词作为后续高亮 token（若有）
       highlightTokens.value = e.agent.low_confidence_words
+      // 后端不逐条下发 agent_step 事件（只在内部跑完三步后给 agent_done），
+      // 因此这里一次性补全三步卡片，保证 AgentSteps 不空。
+      if (!agentSteps.length) {
+        agentSteps.push(
+          {
+            title: 'Step 1 · 低置信消歧确认',
+            promptSystem: '你是手语识别结果的校对助手，需确认低置信词。',
+            promptUser: `gloss: ${e.agent.low_confidence_words.join(' ') || '（无低置信词）'}`,
+            output: e.agent.low_confidence_words.length
+              ? `标记低置信词：${e.agent.low_confidence_words.join('、')}`
+              : '无需消歧',
+          },
+          {
+            title: 'Step 2 · gloss → 自然中文',
+            promptSystem: '把手语 gloss 序列翻译成通顺的中文句子。',
+            promptUser: gloss.value?.gloss_sequence.join(' ') ?? '',
+            output: e.agent.natural_language,
+          },
+          {
+            title: 'Step 3 · 意图与任务决策',
+            promptSystem: '按 AGENT_SCHEMA 输出 intent / task / clarification 的 JSON。',
+            promptUser: e.agent.natural_language,
+            output: JSON.stringify(
+              {
+                intent: e.agent.intent,
+                task: e.agent.task,
+                clarification: e.agent.clarification,
+              },
+              null,
+              2
+            ),
+          }
+        )
+      }
+      activeStep.value = 3
+      pushStage({
+        stage: 'agentStep3',
+        label: '智能体：三步提示管线完成',
+        layer: '智能体层',
+        detail: `intent=${e.agent.intent} · task=${e.agent.task}`,
+      })
       break
     case 'application':
       pushStage({
@@ -250,8 +279,8 @@ function onSseEvent(e: SseEvent) {
 async function fetchSkeletonAsync(id: string) {
   try {
     const sk = await fetchSkeleton(id)
-    if (sk.data && sk.data.length) {
-      frames.value = sk.data as SkeletonFrame[]
+    if (sk.skeleton && sk.skeleton.length) {
+      frames.value = sk.skeleton as SkeletonFrame[]
       fps.value = sk.fps || 30
     }
   } catch {
@@ -366,11 +395,12 @@ function cancel() {
   })
 }
 
+/** 阶段归属层：同时接受后端 wire 名（perception/agent_step1…）与 UI 名（sensing/agentStep1…）。 */
 function layerOf(s: string): string {
-  if (s === 'sensing' || s === 'skeleton') return '感知层'
-  if (s === 'segmenting') return '切分层'
-  if (s === 'recognizing') return '识别层'
-  if (s.startsWith('agentStep')) return '智能体层'
+  if (s === 'sensing' || s === 'skeleton' || s === 'perception') return '感知层'
+  if (s === 'segmenting' || s === 'segmentation') return '切分层'
+  if (s === 'recognizing' || s === 'recognition') return '识别层'
+  if (s.startsWith('agentStep') || s.startsWith('agent_step')) return '智能体层'
   if (s === 'executing') return '应用层'
   if (s === 'done') return '全链路'
   return '控制'

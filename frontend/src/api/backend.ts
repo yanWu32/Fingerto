@@ -13,12 +13,15 @@ export interface HealthData {
   dependencies: Record<string, boolean>
 }
 
-/** 骨架二次拉取返回结构：data.{ shape, fps, num_frames, data }（最内层 data 为 (T,27,3) 或 null） */
+/** 骨架二次拉取返回结构：对齐后端 /skeleton/{jobId} 的 inner data。
+ * 后端返回 { shape, fps, frames, skeleton }（skeleton 为 (T,27,3) 或 null）。 */
 export interface SkeletonResponse {
   shape: string
   fps: number
-  num_frames: number
-  data: number[][][] | null
+  /** 帧数（后端字段名 frames，非 num_frames） */
+  frames: number
+  /** (T,27,3) 骨架张量（后端字段名 skeleton，非 data） */
+  skeleton: number[][][] | null
 }
 
 /** 后端不可用（探测失败 / ready=false）时抛出，调用方据此回退 mock。 */

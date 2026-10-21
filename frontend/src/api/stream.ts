@@ -9,8 +9,8 @@ import type { AgentResult, GlossResult } from './types'
 
 // 阶段名严格对齐后端 server.py pipeline_events() 实际下发的 `stage` 字段。
 // 注意：后端 wire 用 snake_case（perception/segmentation/recognition/agent_step1..3），
-// 与 PipelineFlow.vue 的 camelCase（sensing/skeleton/...）不同；编排层 livePipeline.ts
-// 负责把 wire 阶段映射成 UI 阶段，本模块只忠实表达契约。
+// 与 PipelineFlow.vue 的 camelCase（sensing/skeleton/...）不同；用下方 toUiStage() 映射，
+// 本模块只忠实表达契约。
 export type StreamStageName =
   | 'idle'
   | 'perception'
@@ -19,6 +19,35 @@ export type StreamStageName =
   | 'agent_step1'
   | 'agent_step2'
   | 'agent_step3'
+
+/** UI 阶段名（PipelineFlow.vue / demoPipeline.ts 使用的 camelCase 枚举） */
+export type UiStageName =
+  | 'idle'
+  | 'sensing'
+  | 'skeleton'
+  | 'segmenting'
+  | 'recognizing'
+  | 'agentStep1'
+  | 'agentStep2'
+  | 'agentStep3'
+  | 'executing'
+  | 'done'
+
+/** wire 阶段 → UI 阶段映射表（后端 snake_case → 前端 camelCase） */
+const STAGE_TO_UI: Record<StreamStageName, UiStageName> = {
+  idle: 'idle',
+  perception: 'sensing',
+  segmentation: 'segmenting',
+  recognition: 'recognizing',
+  agent_step1: 'agentStep1',
+  agent_step2: 'agentStep2',
+  agent_step3: 'agentStep3',
+}
+
+/** 把后端 wire 阶段名转成 PipelineFlow 能识别的 UI 阶段名。 */
+export function toUiStage(s: string): UiStageName {
+  return STAGE_TO_UI[s as StreamStageName] ?? 'idle'
+}
 
 export interface StreamWindow {
   startTime: number
@@ -51,7 +80,8 @@ export type SseEvent =
       numFrames: number
       fps: number
       durationSec: number
-      skeleton?: number[][][] | null
+      /** 骨架本体较大，后端只下发这个 URL，前端按 jobId 二次拉取 */
+      skeletonUrl?: string
     }
   | {
       type: 'segmentation_done'
@@ -61,13 +91,6 @@ export type SseEvent =
     }
   | { type: 'recognition_window'; window: StreamWindow }
   | { type: 'recognition_done'; recognition: GlossResult }
-  | {
-      type: 'agent_step'
-      step: 1 | 2 | 3
-      promptSystem: string
-      promptUser: string
-      output: string
-    }
   | { type: 'agent_done'; agent: AgentResult }
   | {
       type: 'application'
