@@ -124,25 +124,44 @@ export interface StreamHandle {
   jobId: string
 }
 
+/** 流式请求可选参数（对齐 API接口表.md §4：model / device / ctx_frames / jobId） */
+export interface StreamOptions {
+  /** 识别模型：stgcn / cnn_lstm / transformer_gcn，默认 cnn_lstm */
+  model?: string
+  /** 推理设备：cpu / cuda，默认 cpu */
+  device?: string
+  /** 识别前对切分单元前后扩展的上下文帧数，默认 20 */
+  ctxFrames?: number
+  /** 指定 jobId（幂等/断点用）；不传则前端生成 */
+  jobId?: string
+}
+
 /**
  * 流式识别：上传视频并逐事件回调。
  * @param file 视频文件（前端仅做类型提示，真实校验在后端）
  * @param onEvent 每收到一个事件回调
  * @param onError 网络错误 / 后端 error 事件回调（取消不算错误）
+ * @param opts 可选后端参数（model/device/ctx_frames）
  */
 export function streamPipeline(
   file: File,
   onEvent: (e: SseEvent) => void,
-  onError?: (err: Error) => void
+  onError?: (err: Error) => void,
+  opts: StreamOptions = {}
 ): StreamHandle {
   const jobId =
-    typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    opts.jobId ||
+    (typeof crypto !== 'undefined' && 'randomUUID' in crypto
       ? crypto.randomUUID()
-      : `job-${Date.now()}-${Math.random().toString(16).slice(2)}`
+      : `job-${Date.now()}-${Math.random().toString(16).slice(2)}`)
   const ctrl = new AbortController()
   const form = new FormData()
   form.append('video', file)
   form.append('jobId', jobId)
+  // 可选参数按 API 表下发（后端 Form 默认值与此处一致，故仅在显式指定时传）
+  if (opts.model) form.append('model', opts.model)
+  if (opts.device) form.append('device', opts.device)
+  if (opts.ctxFrames !== undefined) form.append('ctx_frames', String(opts.ctxFrames))
 
   const promise = (async () => {
     let resp: Response
@@ -159,7 +178,17 @@ export function streamPipeline(
       return
     }
     if (!resp.ok || !resp.body) {
-      onError?.(new Error(`后端返回 HTTP ${resp.status}`))
+      // 后端 400/413/503 会在响应体里带 { msg }；据此给出可读提示，
+      // 而非只报 HTTP 状态码（规范要求：msg 由后端给，前端不自行编造）。
+      let msg = ''
+      try {
+        const txt = await resp.text()
+        const parsed = JSON.parse(txt) as { msg?: string; detail?: string }
+        msg = parsed?.msg || parsed?.detail || ''
+      } catch {
+        /* 非 JSON（如纯文本错误）时忽略，退回状态码提示 */
+      }
+      onError?.(new Error(msg || `后端返回 HTTP ${resp.status}`))
       return
     }
     const reader = resp.body.getReader()

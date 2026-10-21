@@ -1,5 +1,6 @@
 // 后端就绪探针（规范：统一的后端健康探测 + 自动降级到 mock）。
-// 后端 server.py 提供 GET /health 返回 { code, msg, data: { ready, dependencies } }；
+// 后端 server.py 提供 GET /health 返回 { code, msg, data: { ready, deps, models_loaded } }
+// （字段名以 API接口表.md 为准：deps.torch / deps.mediapipe / deps.opencv，非 dependencies）。
 // ready=false 表示推理依赖（torch/mediapipe/cv2）未就绪，前端应自动回退 mock（规范 1.3 数据无关先行）。
 //
 // 设计：运行时探测一次并缓存结果（负结果缓存 30s，避免反复打后端）；
@@ -7,10 +8,17 @@
 import { ref } from 'vue'
 import http from './request'
 
-/** /health 返回的 data 部分 */
+/** /health 返回的 data 部分（对齐 API接口表.md §1） */
 export interface HealthData {
   ready: boolean
-  dependencies: Record<string, boolean>
+  /** 三项依赖就绪情况 */
+  deps: {
+    torch: boolean
+    mediapipe: boolean
+    opencv: boolean
+  }
+  /** 已缓存的识别模型，如 ["cnn_lstm"] */
+  models_loaded: string[]
 }
 
 /** 骨架二次拉取返回结构：对齐后端 /skeleton/{jobId} 的 inner data。
@@ -38,6 +46,8 @@ export class BackendUnavailableError extends Error {
 // 模块级单例：就绪态 + 阴性缓存
 const ready = ref<boolean | null>(null)
 const checking = ref(false)
+/** 最近一次成功的探测明细（用于在 UI 上说明「缺哪个依赖」/「已加载哪个模型」） */
+const health = ref<HealthData | null>(null)
 let lastCheckedAt = 0
 const NEG_CACHE_MS = 30_000
 
@@ -68,6 +78,7 @@ export async function ensureBackendReady(force = false): Promise<boolean> {
       timeout: 4000,
     } as never)
     ready.value = !!data?.ready
+    health.value = data ?? null
     lastCheckedAt = now
     if (!ready.value) {
       throw new BackendUnavailableError('not_ready', '后端推理依赖未就绪（torch/mediapipe/cv2）')
@@ -87,6 +98,24 @@ export async function ensureBackendReady(force = false): Promise<boolean> {
 /** 当前就绪态（用于 UI 展示「真实后端 / mock」徽标，不触发探测）。 */
 export function backendReady(): typeof ready {
   return ready
+}
+
+/** 最近一次探测明细（deps / models_loaded），未探测过则为 null。 */
+export function backendHealth(): typeof health {
+  return health
+}
+
+/** 把未就绪的依赖列成中文短语，供 UI 提示「缺什么」。 */
+export function missingDeps(h: HealthData | null): string[] {
+  if (!h) return []
+  const names: Record<string, string> = {
+    torch: 'torch（推理框架）',
+    mediapipe: 'mediapipe（骨架抽取）',
+    opencv: 'opencv（视频解码）',
+  }
+  return Object.entries(h.deps ?? {})
+    .filter(([, ok]) => !ok)
+    .map(([k]) => names[k] ?? k)
 }
 
 /** 按 jobId 二次拉取 (T,27,3) 骨架（/skeleton/{jobId}）。 */

@@ -19,7 +19,13 @@ import {
   toUiStage,
   type SseEvent,
 } from '@/api/stream'
-import { ensureBackendReady, BackendUnavailableError, fetchSkeleton } from '@/api/backend'
+import {
+  ensureBackendReady,
+  BackendUnavailableError,
+  fetchSkeleton,
+  backendHealth,
+  missingDeps,
+} from '@/api/backend'
 import type { AgentResult, GlossResult } from '@/api/types'
 import type { SkeletonFrame } from '@/utils/skeleton'
 import { formatConfidence } from '@/utils/format'
@@ -105,6 +111,29 @@ const durationSec = ref(0)
 const skeletonShape = ref('')
 const modelName = ref('')
 
+// ---- 后端详情 / 计时 ----
+/** /health 探测明细（deps / models_loaded） */
+const health = backendHealth()
+const missing = computed(() => missingDeps(health.value))
+/** 本次识别耗时（后端 CPU 约 100s，需让用户感知进度） */
+const elapsed = ref(0)
+let elapsedTimer: ReturnType<typeof setInterval> | null = null
+
+function startTimer() {
+  stopTimer()
+  elapsed.value = 0
+  elapsedTimer = setInterval(() => {
+    elapsed.value += 0.1
+  }, 100)
+}
+
+function stopTimer() {
+  if (elapsedTimer) {
+    clearInterval(elapsedTimer)
+    elapsedTimer = null
+  }
+}
+
 function resetRun() {
   stage.value = 'idle'
   stageLog.length = 0
@@ -139,7 +168,9 @@ async function runReal() {
     file.value!,
     onSseEvent,
     (err) => {
+      // 后端 msg 直接透出（规范要求：msg 由后端给，前端不自行编造）
       error.value = err.message || '后端识别失败'
+      stopTimer()
     }
   )
   jobId.value = handle.jobId
@@ -150,6 +181,7 @@ async function runReal() {
     /* onError 已处理 */
   } finally {
     running.value = false
+    stopTimer()
     if (activeHandle === handle) activeHandle = null
   }
 }
@@ -363,6 +395,7 @@ async function start() {
   resetRun()
   running.value = true
   error.value = ''
+  startTimer()
   try {
     // 先探测后端就绪（结果按 30s 缓存，不阻塞）
     await ensureBackendReady()
@@ -374,6 +407,7 @@ async function start() {
     } else {
       error.value = (e as Error).message || '启动失败'
       running.value = false
+      stopTimer()
     }
   }
 }
@@ -387,6 +421,7 @@ function cancel() {
     mockCanceller.cancelled = true
   }
   running.value = false
+  stopTimer()
   pushStage({
     stage: stage.value,
     label: '已取消',
@@ -431,7 +466,26 @@ onBeforeUnmount(() => {
         <span class="pill" :class="mode === 'real' ? 'pill--ok' : mode === 'mock' ? 'pill--warn' : 'pill--idle'">
           {{ mode === 'real' ? '真实后端（SSE 流式）' : mode === 'mock' ? '本地演示（mock 降级）' : '就绪探测中' }}
         </span>
+        <span v-if="running" class="pill pill--idle rc__elapsed">
+          {{ elapsed.toFixed(1) }}s
+        </span>
       </p>
+
+      <!-- 后端就绪明细（/health）：说明走真实还是降级、缺哪个依赖 -->
+      <div v-if="health" class="rc__health">
+        <span class="rc__health-item">
+          依赖：
+          <code v-for="(ok, k) in health.deps" :key="k" :class="ok ? 'dep dep--ok' : 'dep dep--bad'">
+            {{ k }}={{ ok ? '✓' : '✗' }}
+          </code>
+        </span>
+        <span v-if="health.models_loaded && health.models_loaded.length" class="rc__health-item">
+          模型：<code>{{ health.models_loaded.join(', ') }}</code>
+        </span>
+        <span v-if="missing.length" class="rc__health-item rc__health-warn">
+          缺失：{{ missing.join('、') }}（已自动降级 mock）
+        </span>
+      </div>
     </header>
 
     <!-- 上传区 -->
@@ -603,6 +657,47 @@ onBeforeUnmount(() => {
 .pill--idle {
   background: var(--color-muted, #f3f4f6);
   color: var(--color-muted-text, #6b7280);
+}
+
+.rc__elapsed {
+  font-variant-numeric: tabular-nums;
+  margin-left: 0.35rem;
+}
+
+/* /health 依赖明细 */
+.rc__health {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1rem;
+  margin-top: 0.5rem;
+  font-size: 0.82rem;
+  color: var(--color-muted-text, #6b7280);
+}
+
+.rc__health-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.rc__health-warn {
+  color: #92400e;
+}
+
+.dep {
+  padding: 0.05rem 0.3rem;
+  border-radius: 0.3rem;
+  font-size: 0.75rem;
+}
+
+.dep--ok {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.dep--bad {
+  background: #fee2e2;
+  color: #991b1b;
 }
 
 .upload {
