@@ -36,19 +36,42 @@ const MAX_BYTES = 50 * 1024 * 1024 // 与后端 MAX_UPLOAD_BYTES 对齐
 // ---- 上传 ----
 const file = ref<File | null>(null)
 const fileName = ref('')
+const fileSize = ref(0)
 const fileErr = ref('')
 const videoPreview = ref('') // object URL，仅用于本地预览（如有视频文件）
+/** 拖拽悬停高亮状态（用于入口视觉反馈） */
+const dragOver = ref(false)
+let dragDepth = 0
 
 function pickFile(e: Event) {
   const input = e.target as HTMLInputElement
   const f = input.files?.[0]
-  if (!f) return
-  validateAndSet(f)
+  if (f) validateAndSet(f)
+  // 允许再次选择同一文件（清空 input 值）
+  input.value = ''
 }
 
-// 支持拖拽
+// 支持拖拽（带进入/离开计数，避免子元素触发抖动）
+function onDragEnter(e: DragEvent) {
+  e.preventDefault()
+  dragDepth += 1
+  if (e.dataTransfer?.types?.includes('Files')) dragOver.value = true
+}
+
+function onDragLeave(e: DragEvent) {
+  e.preventDefault()
+  dragDepth = Math.max(0, dragDepth - 1)
+  if (dragDepth === 0) dragOver.value = false
+}
+
+function onDragOver(e: DragEvent) {
+  e.preventDefault()
+}
+
 function onDrop(e: DragEvent) {
   e.preventDefault()
+  dragDepth = 0
+  dragOver.value = false
   const f = e.dataTransfer?.files?.[0]
   if (f) validateAndSet(f)
 }
@@ -66,13 +89,15 @@ function validateAndSet(f: File) {
   }
   if (videoPreview.value) URL.revokeObjectURL(videoPreview.value)
   file.value = f
-  fileName.value = `${f.name}（${mb(f.size)} MB）`
+  fileSize.value = f.size
+  fileName.value = f.name
   videoPreview.value = URL.createObjectURL(f)
 }
 
 function clearFile() {
   file.value = null
   fileName.value = ''
+  fileSize.value = 0
   fileErr.value = ''
   if (videoPreview.value) URL.revokeObjectURL(videoPreview.value)
   videoPreview.value = ''
@@ -102,6 +127,8 @@ const playerComp = ref<InstanceType<typeof SkeletonCanvas> | null>(null)
 
 // 切分 / 逐窗口（真实模式由 SSE 喂入）
 const segments = ref<{ startTime: number; endTime: number }[]>([])
+/** segmentation_done 携带的识别窗口总数（用于摘要展示） */
+const numWindows = ref(0)
 const windows = ref<{ startTime: number; endTime: number; gloss: string; confidence: number }[]>([])
 const agentSteps = reactive<
   { title: string; promptSystem: string; promptUser: string; output: string }[]
@@ -143,6 +170,7 @@ function resetRun() {
   gloss.value = null
   agent.value = null
   segments.value = []
+  numWindows.value = 0
   windows.value = []
   agentSteps.length = 0
   highlightTokens.value = []
@@ -220,6 +248,7 @@ function onSseEvent(e: SseEvent) {
       break
     case 'segmentation_done':
       segments.value = e.segments
+      numWindows.value = e.numWindows
       pushStage({
         stage: 'segmenting',
         label: '运动能量切分 + 滑动窗口',
@@ -355,6 +384,35 @@ function playGloss(i: number) {
   if (ts && playerComp.value) playerComp.value.seekSec(ts[0])
 }
 
+// ---------- 切分层时间轴辅助 ----------
+/** 活跃段定位（左/宽按占整段时长的百分比） */
+function segStyle(s: { startTime: number; endTime: number }) {
+  const total = durationSec.value || 1
+  return {
+    left: `${(s.startTime / total) * 100}%`,
+    width: `${Math.max(((s.endTime - s.startTime) / total) * 100, 0.6)}%`,
+  }
+}
+
+/** 仅当段宽足够（>6% 时长）才在内部显示文字，避免窄段标签互相重叠 */
+function segLabelVisible(i: number) {
+  const s = segments.value[i]
+  if (!s) return false
+  const total = durationSec.value || 1
+  return (s.endTime - s.startTime) / total > 0.06
+}
+
+/** 自适应秒刻度：1s / 2s / 5s 三档，保证刻度数 ≤ 12 */
+const tickSecs = computed(() => {
+  const dur = durationSec.value
+  if (!dur || dur <= 0) return []
+  const step = dur <= 12 ? 1 : dur <= 25 ? 2 : 5
+  const out: number[] = []
+  for (let t = 0; t <= dur; t += step) out.push(Math.round(t))
+  if (out[out.length - 1] < dur) out.push(Math.round(dur))
+  return out
+})
+
 // ---------- 视频 ↔ 骨架演示同步比对 ----------
 /** 比对区内的 <video> 元素（与 SkeletonCanvas 同屏，便于逐一对照） */
 const videoRef = ref<HTMLVideoElement | null>(null)
@@ -452,38 +510,58 @@ onMounted(async () => {
       </div>
     </header>
 
-    <!-- 上传区 -->
+    <!-- 上传区：拖拽入口 + 已选文件卡片（可更换/移除），与「开始识别」同行 -->
     <section class="upload panel-no">
-      <label
-        class="drop"
-        :class="{ 'drop--err': fileErr, 'drop--filled': file }"
-        @dragover.prevent
-        @drop="onDrop"
-      >
-        <input
-          type="file"
-          accept="video/*,.mp4,.avi,.mov,.webm"
-          class="drop__input"
-          @change="pickFile"
+      <div class="upload__row">
+        <label
+          class="drop"
+          :class="{
+            'drop--err': fileErr,
+            'drop--filled': file,
+            'drop--dragover': dragOver,
+          }"
+          @dragenter="onDragEnter"
+          @dragleave="onDragLeave"
+          @dragover="onDragOver"
+          @drop="onDrop"
         >
-        <div v-if="!file" class="drop__hint">
-          <span class="drop__icon" aria-hidden="true">🎞️</span>
-          <p><strong>点击或拖拽视频到此处</strong></p>
-          <p class="drop__meta">仅限视频（mp4 / avi / mov / webm），≤ 50MB</p>
-        </div>
-        <div v-else class="drop__file">
-          <p><strong>{{ fileName }}</strong></p>
-          <button type="button" class="link" @click.prevent="clearFile">移除</button>
-        </div>
-      </label>
-      <p v-if="fileErr" role="alert" class="rc__err">{{ fileErr }}</p>
+          <input
+            type="file"
+            accept="video/*,.mp4,.avi,.mov,.webm"
+            class="drop__input"
+            @change="pickFile"
+          >
+          <div v-if="!file" class="drop__hint">
+            <span class="drop__icon" aria-hidden="true">🎞️</span>
+            <p><strong>点击或拖拽手语视频到此处</strong></p>
+            <p class="drop__meta">仅限视频（mp4 / avi / mov / webm），≤ 50 MB</p>
+          </div>
+          <div v-else class="drop__file">
+            <span class="drop__file-icon" aria-hidden="true">📹</span>
+            <div class="drop__file-info">
+              <p class="drop__file-name">{{ fileName }}</p>
+              <p class="drop__file-meta">{{ mb(fileSize) }} MB · 点击可更换视频</p>
+            </div>
+            <button
+              type="button"
+              class="link"
+              @click.prevent.stop="clearFile"
+            >
+              移除
+            </button>
+          </div>
+        </label>
 
-      <div class="rc__actions">
-        <button type="button" class="btn btn--primary" :disabled="!canStart" @click="start">
-          ▶ 开始识别
-        </button>
-        <button type="button" class="btn" :disabled="!running" @click="cancel">■ 取消</button>
+        <div class="rc__actions">
+          <button type="button" class="btn btn--primary" :disabled="!canStart || running" @click="start">
+            {{ running ? '识别中…' : '▶ 开始识别' }}
+          </button>
+          <button type="button" class="btn" :disabled="!running" @click="cancel">
+            ■ 中断识别
+          </button>
+        </div>
       </div>
+      <p v-if="fileErr" role="alert" class="rc__err">{{ fileErr }}</p>
     </section>
 
     <p v-if="error" role="alert" class="rc__err rc__err--run">{{ error }}</p>
@@ -553,24 +631,42 @@ onMounted(async () => {
         </div>
       </section>
 
-      <!-- 右：切分 -->
+      <!-- 右：切分层（时间轴 + 秒刻度，窄段自动隐藏文字、悬浮提示） -->
       <section class="panel" aria-labelledby="seg-title">
-        <h2 id="seg-title" class="panel__title">② 切分层</h2>
-        <div v-if="segments.length" class="timeline" aria-hidden="true">
-          <div class="timeline__axis" />
-          <div
-            v-for="(s, i) in segments"
-            :key="`sg${i}`"
-            class="timeline__seg"
-            :style="{
-              left: `${(s.startTime / (durationSec || 1)) * 100}%`,
-              width: `${((s.endTime - s.startTime) / (durationSec || 1)) * 100}%`,
-            }"
-          >
-            段{{ i + 1 }}
+        <h2 id="seg-title" class="panel__title">② 切分层：运动能量切分</h2>
+        <div v-if="segments.length" class="seg">
+          <div class="seg__summary">
+            <span>共 <strong>{{ segments.length }}</strong> 个活跃段</span>
+            <span v-if="numWindows">→ <strong>{{ numWindows }}</strong> 个识别窗口</span>
+            <span class="seg__summary-dur">时间轴 0–{{ durationSec.toFixed(1) }}s</span>
+          </div>
+          <div class="timeline" role="img" :aria-label="`切分时间轴：${segments.length} 个活跃段`">
+            <!-- 秒刻度（自适应密度：每 1s / 2s / 5s） -->
+            <div
+              v-for="t in tickSecs"
+              :key="`tick${t}`"
+              class="timeline__tick"
+              :style="{ left: `${(t / (durationSec || 1)) * 100}%` }"
+            >
+              <span class="timeline__tick-mark" />
+              <span class="timeline__tick-label">{{ t }}s</span>
+            </div>
+            <!-- 活跃段 -->
+            <div
+              v-for="(s, i) in segments"
+              :key="`sg${i}`"
+              class="timeline__seg"
+              :class="{ 'timeline__seg--label': segLabelVisible(i) }"
+              :title="`段${i + 1}：${s.startTime.toFixed(1)}s – ${s.endTime.toFixed(1)}s（${(s.endTime - s.startTime).toFixed(1)}s）`"
+              :style="segStyle(s)"
+            >
+              <template v-if="segLabelVisible(i)">
+                <span class="timeline__seg-no">段{{ i + 1 }}</span>
+              </template>
+            </div>
           </div>
         </div>
-        <p v-else class="vis__hint">（识别开始后展示运动能量切分结果）</p>
+        <p v-else class="vis__hint">（识别开始后展示运动能量切分结果；无活跃段则为空）</p>
       </section>
     </div>
 
@@ -714,23 +810,53 @@ onMounted(async () => {
 .upload {
   display: flex;
   flex-direction: column;
+  gap: 0.6rem;
+}
+
+/* 上传入口与操作按钮同行：左侧拖拽区自适应，右侧按钮组右对齐 */
+.upload__row {
+  display: flex;
   gap: 0.8rem;
+  align-items: stretch;
+  flex-wrap: wrap;
+}
+
+.upload__row .drop {
+  flex: 1 1 260px;
+}
+
+.rc__actions {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
 }
 
 .drop {
   display: block;
   border: 2px dashed var(--color-border, #cbd5e1);
   border-radius: var(--radius, 0.75rem);
-  padding: 1.4rem;
+  padding: 1rem 1.2rem;
   text-align: center;
   cursor: pointer;
   background: var(--color-surface, #fff);
-  transition: border-color 0.15s ease, background 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
+/* 拖拽悬停：高亮提示「可以放」 */
+.drop--dragover {
+  border-color: var(--color-primary, #2563eb);
+  background: #eff6ff;
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.12);
+}
+
+/* 已选文件：实线边框 + 横排卡片（图标 / 名称+大小 / 移除） */
 .drop--filled {
   border-style: solid;
-  cursor: default;
+  border-color: var(--color-border, #e5e7eb);
+  background: #fafafa;
 }
 
 .drop--err {
@@ -746,19 +872,48 @@ onMounted(async () => {
 }
 
 .drop__icon {
-  font-size: 2rem;
+  font-size: 1.7rem;
 }
 
 .drop__meta {
   color: var(--color-muted-text, #6b7280);
-  font-size: 0.85rem;
+  font-size: 0.82rem;
 }
 
+/* 已选文件卡片：横排布局，名称与大小分离，长文件名自动省略 */
 .drop__file {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.6rem;
+  text-align: left;
+}
+
+.drop__file-icon {
+  font-size: 1.3rem;
+  flex: none;
+}
+
+.drop__file-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.drop__file-name {
+  margin: 0;
+  font-weight: 600;
+  font-size: 0.92rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.drop__file-meta {
+  margin: 0;
+  color: var(--color-muted-text, #6b7280);
+  font-size: 0.78rem;
 }
 
 .link {
@@ -767,11 +922,8 @@ onMounted(async () => {
   color: var(--color-primary, #2563eb);
   cursor: pointer;
   text-decoration: underline;
-}
-
-.rc__actions {
-  display: flex;
-  gap: 0.6rem;
+  flex: none;
+  font-size: 0.85rem;
 }
 
 .btn {
@@ -885,31 +1037,100 @@ onMounted(async () => {
   }
 }
 
+/* 切分层：摘要行 + 带秒刻度的时间轴 */
+.seg {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.seg__summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1rem;
+  font-size: 0.85rem;
+  color: var(--color-muted-text, #6b7280);
+}
+
+.seg__summary strong {
+  color: var(--color-text, #111827);
+  font-variant-numeric: tabular-nums;
+}
+
+.seg__summary-dur {
+  margin-left: auto;
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+}
+
 .timeline {
   position: relative;
-  height: 2.2rem;
-  margin: 0.5rem 0;
+  height: 3rem;
   background: var(--color-muted, #f3f4f6);
   border-radius: 0.4rem;
   overflow: hidden;
 }
 
-.timeline__axis {
+/* 秒刻度：竖线 + 下方小字（位于活跃段下层，不互相遮挡） */
+.timeline__tick {
   position: absolute;
-  inset: 0;
+  top: 0;
+  bottom: 0;
+  width: 0;
+}
+
+.timeline__tick-mark {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 1px;
+  background: rgba(148, 163, 184, 0.5);
+}
+
+.timeline__tick-label {
+  position: absolute;
+  bottom: 1px;
+  left: 3px;
+  font-size: 0.62rem;
+  color: #64748b;
+  font-variant-numeric: tabular-nums;
 }
 
 .timeline__seg {
   position: absolute;
-  top: 0;
-  bottom: 0;
+  top: 0.3rem;
+  bottom: 0.9rem; /* 留出底部 0.6rem 给秒刻度标签 */
   display: flex;
   align-items: center;
-  justify-content: center;
-  font-size: 0.72rem;
+  overflow: hidden;
   background: rgba(37, 99, 235, 0.25);
-  border-left: 1px solid var(--color-primary, #2563eb);
-  border-right: 1px solid var(--color-primary, #2563eb);
+  border-left: 2px solid var(--color-primary, #2563eb);
+  border-right: 2px solid var(--color-primary, #2563eb);
+  border-radius: 0.2rem;
+  transition: background 0.15s ease;
+}
+
+.timeline__seg:hover {
+  background: rgba(37, 99, 235, 0.45);
+  cursor: help;
+}
+
+/* 段内编号（仅宽段显示；窄段靠悬浮 title 提示） */
+.timeline__seg-no {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #1d4ed8;
+  padding-left: 0.3rem;
+  white-space: nowrap;
+}
+
+.timeline__seg--label .timeline__seg-no {
+  display: inline;
+}
+
+.timeline__seg:not(.timeline__seg--label) .timeline__seg-no {
+  display: none;
 }
 
 .kv {
