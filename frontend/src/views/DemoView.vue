@@ -105,7 +105,7 @@ onUnmounted(() => playerComp.value?.stop())
           {{ playing ? '⏸ 暂停骨架' : '▶ 播放骨架' }}
         </button>
         <span class="demo__mode" :class="{ 'demo__mode--real': !USE_MOCK }">
-          {{ USE_MOCK ? 'mock 数据' : '真实后端' }}
+          {{ USE_MOCK ? '脚本化演示（非后端产出）' : '真实后端' }}
         </span>
       </div>
       <p v-if="error" role="alert" class="demo__error">{{ error }}</p>

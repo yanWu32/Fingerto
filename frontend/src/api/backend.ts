@@ -77,8 +77,26 @@ export async function ensureBackendReady(force = false): Promise<boolean> {
     const data = await http.get<HealthData>('/health', {
       timeout: 4000,
     } as never)
-    ready.value = !!data?.ready
-    health.value = data ?? null
+    // 防御：serve.py 未带 --backend 时 /api/health 会回退成 SPA 的 HTML（200），
+    // axios 仍能「解析」为字符串/对象。必须校验返回的确实是契约结构，
+    // 否则会误判「真实后端」并展示乱码依赖。非契约响应一律视为不可达。
+    const d = data as unknown
+    if (
+      !d ||
+      typeof d !== 'object' ||
+      typeof (d as HealthData).ready !== 'boolean' ||
+      typeof (d as HealthData).deps !== 'object' ||
+      (d as HealthData).deps === null
+    ) {
+      lastCheckedAt = now
+      ready.value = false
+      throw new BackendUnavailableError(
+        'unreachable',
+        '未检测到真实后端响应（请确认已用 python serve.py --backend-fastapi 启动）'
+      )
+    }
+    ready.value = !!data.ready
+    health.value = data
     lastCheckedAt = now
     if (!ready.value) {
       throw new BackendUnavailableError('not_ready', '后端推理依赖未就绪（torch/mediapipe/cv2）')

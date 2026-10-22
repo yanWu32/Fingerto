@@ -27,7 +27,14 @@ const props = defineProps<{
   <section class="panel" aria-labelledby="agent-title">
     <h2 id="agent-title" class="panel__title">智能体层：LLM 三步提示管线</h2>
 
-    <div class="steps">
+    <!-- 后端未下发分步 prompt/输出时不编造：给出诚实说明 -->
+    <p v-if="!steps.length" class="steps__empty">
+      后端未下发智能体分步数据（SSE 仅提供最终
+      <code>agent_done</code>
+      结果）。此处不展示任何前端编造的提示词；下方为后端真实产出的 AgentSchema。
+    </p>
+
+    <div v-else class="steps">
       <article
         v-for="(s, i) in steps"
         :key="s.name ?? i"
@@ -97,6 +104,19 @@ const props = defineProps<{
 .steps {
   display: grid;
   gap: 0.75rem;
+}
+
+.steps__empty {
+  margin: 0 0 0.75rem;
+  font-size: 0.85rem;
+  color: var(--color-muted-text, #6b7280);
+}
+
+.steps__empty code {
+  background: var(--color-muted, #f3f4f6);
+  padding: 0.1rem 0.3rem;
+  border-radius: 0.3rem;
+  font-size: 0.8rem;
 }
 
 .stepcard {

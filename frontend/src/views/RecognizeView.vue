@@ -1,17 +1,18 @@
 <script setup lang="ts">
 // 真实识别入口（用户要求的「添加视频 → 开始 → 动态演示识别过程」）。
+// 真实识别入口（用户要求的「添加视频 → 开始 → 动态演示识别过程」）。
 // - 仅允许视频输入（accept=video/*，前端类型/大小提示，后端再次校验）。
-// - 点击「开始识别」：优先走真实后端（先探测 /api/health，ready 则 POST /api/pipeline/stream 消费 SSE）；
-//   探测失败 / ready=false 自动降级到 mock 演示（规范 1.3 数据无关先行）。
-// - 识别过程中逐事件驱动 PipelineFlow / 骨架 / gloss / 智能体三步，动态演示全链路。
-// - 可「取消」（AbortController 中断 fetch + 通知后端 /pipeline/{jobId}/cancel；mock 模式则中止演示）。
-import { computed, onBeforeUnmount, reactive, ref } from 'vue'
+// - 点击「开始识别」：先探测 /api/health，ready 才 POST /api/pipeline/stream 消费 SSE。
+// - **所有展示数据均为后端真实产出**：不使用 mock，后端不可用/依赖缺失时直接报错说明原因
+//   （用户明确要求：结果必须来自后端，禁止前端虚拟数据）。
+// - 识别过程中逐事件驱动 PipelineFlow / 骨架 / gloss / 智能体结果。
+// - 可「取消」（AbortController 中断 fetch + 通知后端 /pipeline/{jobId}/cancel）。
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import SkeletonCanvas from '@/components/SkeletonCanvas.vue'
 import PipelineFlow from '@/components/PipelineFlow.vue'
 import StageLog from '@/components/StageLog.vue'
 import GlossBoard from '@/components/GlossBoard.vue'
 import AgentSteps from '@/components/AgentSteps.vue'
-import { buildScenario, runFullDemo, type DemoCanceller, DemoCancelledError } from '@/api/demoPipeline'
 import type { PipelineStageName, StageSnapshot } from '@/api/demoPipeline'
 import {
   streamPipeline,
@@ -87,7 +88,7 @@ const stage = ref<PipelineStageName>('idle')
 const stageLog = reactive<StageSnapshot[]>([])
 const running = ref(false)
 const error = ref('')
-const mode = ref<'probe' | 'real' | 'mock'>('probe') // 当前识别所走模式
+const mode = ref<'probe' | 'real'>('probe') // 当前识别所走模式（已移除 mock 降级，见 start()）
 const jobId = ref('')
 
 // 骨架 / gloss / 智能体
@@ -241,40 +242,9 @@ function onSseEvent(e: SseEvent) {
       agent.value = e.agent
       // 低置信词作为后续高亮 token（若有）
       highlightTokens.value = e.agent.low_confidence_words
-      // 后端不逐条下发 agent_step 事件（只在内部跑完三步后给 agent_done），
-      // 因此这里一次性补全三步卡片，保证 AgentSteps 不空。
-      if (!agentSteps.length) {
-        agentSteps.push(
-          {
-            title: 'Step 1 · 低置信消歧确认',
-            promptSystem: '你是手语识别结果的校对助手，需确认低置信词。',
-            promptUser: `gloss: ${e.agent.low_confidence_words.join(' ') || '（无低置信词）'}`,
-            output: e.agent.low_confidence_words.length
-              ? `标记低置信词：${e.agent.low_confidence_words.join('、')}`
-              : '无需消歧',
-          },
-          {
-            title: 'Step 2 · gloss → 自然中文',
-            promptSystem: '把手语 gloss 序列翻译成通顺的中文句子。',
-            promptUser: gloss.value?.gloss_sequence.join(' ') ?? '',
-            output: e.agent.natural_language,
-          },
-          {
-            title: 'Step 3 · 意图与任务决策',
-            promptSystem: '按 AGENT_SCHEMA 输出 intent / task / clarification 的 JSON。',
-            promptUser: e.agent.natural_language,
-            output: JSON.stringify(
-              {
-                intent: e.agent.intent,
-                task: e.agent.task,
-                clarification: e.agent.clarification,
-              },
-              null,
-              2
-            ),
-          }
-        )
-      }
+      // 重要：后端 SSE 只下发 agent_done（含最终 AgentSchema），
+      // 不下发逐步的 prompt/输出。前端绝不自行编造三步提示词，
+      // 因此这里只记录阶段，不填充 agentSteps（卡片保持为空→组件显示「后端未提供分步数据」）。
       activeStep.value = 3
       pushStage({
         stage: 'agentStep3',
@@ -320,76 +290,11 @@ async function fetchSkeletonAsync(id: string) {
   }
 }
 
-// ---------- mock 回退 ----------
-async function runMock() {
-  mode.value = 'mock'
-  const scenario = buildScenario(0)
-  const canceller: DemoCanceller = { cancelled: false }
-  mockCanceller = canceller
-  durationSec.value = scenario.sense.durationSec
-  skeletonShape.value = scenario.skeleton.shape
-  modelName.value = scenario.recognition.model
-  try {
-    await runFullDemo(
-      scenario,
-      (s) => {
-        pushStage(s)
-        // 把 mock 场景产物映射到 UI
-        if (s.stage === 'skeleton') {
-          frames.value = scenario.frames
-        }
-        if (s.stage === 'segmenting') {
-          segments.value = scenario.segmentation.segments
-        }
-        if (s.stage === 'recognizing') {
-          const p = s.payload as { glossResult?: GlossResult }
-          if (p.glossResult) gloss.value = p.glossResult
-          if (scenario.recognition.windows) {
-            windows.value = scenario.recognition.windows.map((w) => ({
-              startTime: w.startTime,
-              endTime: w.endTime,
-              gloss: w.gloss,
-              confidence: w.confidence,
-            }))
-          }
-        }
-        if (s.stage.startsWith('agentStep')) {
-          const p = s.payload as { step?: { title: string; promptSystem: string; promptUser: string; output: string } }
-          if (p.step) {
-            activeStep.value = Number(s.stage.replace('agentStep', ''))
-            agentSteps.push(p.step)
-          }
-        }
-        if (s.stage === 'executing') {
-          // 执行态细节已在 s.detail
-        }
-        if (s.stage === 'done') {
-          const p = s.payload as { gloss?: GlossResult; agent?: AgentResult }
-          if (p.gloss) gloss.value = p.gloss
-          if (p.agent) {
-            agent.value = p.agent
-            highlightTokens.value = p.agent.low_confidence_words
-          }
-        }
-      },
-      520,
-      canceller
-    )
-  } catch (err) {
-    if (err instanceof DemoCancelledError) {
-      error.value = ''
-    } else {
-      error.value = '演示生成失败'
-    }
-  } finally {
-    running.value = false
-    mockCanceller = null
-  }
-}
-
-let mockCanceller: DemoCanceller | null = null
 
 // ---------- 开始 / 取消 ----------
+// 重要（用户要求）：页面展示的必须是后端真实输出，不允许前端编造结果。
+// 因此这里**不再静默降级到 mock**：后端不可用就直接报错并说明原因，
+// 让使用者明确知道「没有真实结果可展示」，而不是看到一段虚拟演示。
 async function start() {
   if (!canStart.value) return
   resetRun()
@@ -401,13 +306,17 @@ async function start() {
     await ensureBackendReady()
     runReal()
   } catch (e) {
+    running.value = false
+    stopTimer()
     if (e instanceof BackendUnavailableError) {
-      // 自动降级 mock（数据无关先行）
-      runMock()
+      // 给出可操作的原因，而不是悄悄用假数据糊过去
+      const miss = missing.value.length ? `缺失依赖：${missing.value.join('、')}。` : ''
+      error.value =
+        e.reason === 'not_ready'
+          ? `后端推理依赖未就绪，无法产出真实结果。${miss}请安装依赖后重启后端（python serve.py --backend-fastapi）。`
+          : `无法连接后端服务，无法产出真实结果。请确认已启动：python serve.py --backend-fastapi`
     } else {
       error.value = (e as Error).message || '启动失败'
-      running.value = false
-      stopTimer()
     }
   }
 }
@@ -417,9 +326,7 @@ function cancel() {
     // 中断前端 fetch（AbortController）+ 通知后端停止（cancelStream 内部已 abort）
     cancelStream(activeHandle)
   }
-  if (mode.value === 'mock' && mockCanceller) {
-    mockCanceller.cancelled = true
-  }
+  // 已无 mock 路径：取消仅作用于真实后端的流式任务
   running.value = false
   stopTimer()
   pushStage({
@@ -451,6 +358,17 @@ onBeforeUnmount(() => {
   if (videoPreview.value) URL.revokeObjectURL(videoPreview.value)
   if (running.value) cancel()
 })
+
+// 进入页面即探测后端真实可用性（不阻塞 UI），让上方「当前模式」与依赖明细提前展示，
+// 用户上传前就能看到后端是否就绪，避免点了开始才发现没有真实结果。
+onMounted(async () => {
+  try {
+    const ok = await ensureBackendReady()
+    if (ok) mode.value = 'real'
+  } catch {
+    // 不可用：mode 保持 'probe'，UI 提示需启动后端；点击开始时再明确报错。
+  }
+})
 </script>
 
 <template>
@@ -463,12 +381,17 @@ onBeforeUnmount(() => {
       </p>
       <p class="rc__mode">
         当前模式：
-        <span class="pill" :class="mode === 'real' ? 'pill--ok' : mode === 'mock' ? 'pill--warn' : 'pill--idle'">
-          {{ mode === 'real' ? '真实后端（SSE 流式）' : mode === 'mock' ? '本地演示（mock 降级）' : '就绪探测中' }}
+        <span class="pill" :class="mode === 'real' ? 'pill--ok' : 'pill--idle'">
+          {{ mode === 'real' ? '真实后端（SSE 流式）' : '就绪探测中' }}
         </span>
         <span v-if="running" class="pill pill--idle rc__elapsed">
           {{ elapsed.toFixed(1) }}s
         </span>
+      </p>
+
+      <p class="rc__notice">
+        本页所有结果均来自后端真实推理（<code>/api/pipeline/stream</code>
+        SSE）；后端不可用时直接报错，不使用任何前端虚拟数据。
       </p>
 
       <!-- 后端就绪明细（/health）：说明走真实还是降级、缺哪个依赖 -->
@@ -483,7 +406,7 @@ onBeforeUnmount(() => {
           模型：<code>{{ health.models_loaded.join(', ') }}</code>
         </span>
         <span v-if="missing.length" class="rc__health-item rc__health-warn">
-          缺失：{{ missing.join('、') }}（已自动降级 mock）
+          缺失：{{ missing.join('、') }}（依赖不全，无法产出真实结果）
         </span>
       </div>
     </header>
@@ -662,6 +585,20 @@ onBeforeUnmount(() => {
 .rc__elapsed {
   font-variant-numeric: tabular-nums;
   margin-left: 0.35rem;
+}
+
+/* 真实性声明：本页只用后端真实输出 */
+.rc__notice {
+  margin: 0.5rem 0 0;
+  font-size: 0.82rem;
+  color: var(--color-muted-text, #6b7280);
+}
+
+.rc__notice code {
+  background: var(--color-muted, #f3f4f6);
+  padding: 0.1rem 0.3rem;
+  border-radius: 0.3rem;
+  font-size: 0.78rem;
 }
 
 /* /health 依赖明细 */

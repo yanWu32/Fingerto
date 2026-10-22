@@ -18,6 +18,14 @@ async function runDemo() {
   error.value = ''
   try {
     // 所有接口请求必须 try/catch（规范 4.4）
+    // 真实模式下 /pipeline 需要上传视频文件；首页没有上传入口，
+    // 因此真实模式不在此处臆造结果，而是引导到 /recognize 上传视频。
+    if (!USE_MOCK) {
+      recognition.value = null
+      agent.value = null
+      error.value = '真实模式需要上传视频：请前往「视频识别」页上传后查看后端真实结果。'
+      return
+    }
     const res = await runPipeline()
     recognition.value = res.recognition
     agent.value = res.agent
@@ -48,7 +56,9 @@ onMounted(runDemo)
 
     <section class="home__demo" aria-labelledby="demo-title">
       <div class="home__demo-head">
-        <h2 id="demo-title">识别链路演示（{{ USE_MOCK ? 'mock 数据' : '真实后端' }}）</h2>
+        <h2 id="demo-title">
+          识别链路演示（{{ USE_MOCK ? '内置示例数据（非后端产出）' : '真实后端' }}）
+        </h2>
         <div class="home__demo-actions">
           <RouterLink to="/demo" class="home__link">查看全链路演示 →</RouterLink>
           <button type="button" class="home__btn" :disabled="loading" @click="runDemo">
