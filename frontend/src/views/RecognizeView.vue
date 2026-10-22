@@ -151,6 +151,7 @@ function resetRun() {
   skeletonShape.value = ''
   modelName.value = ''
   durationSec.value = 0
+  resetDemo()
 }
 
 function pushStage(s: StageSnapshot) {
@@ -354,6 +355,46 @@ function playGloss(i: number) {
   if (ts && playerComp.value) playerComp.value.seekSec(ts[0])
 }
 
+// ---------- 视频 ↔ 骨架演示同步比对 ----------
+/** 比对区内的 <video> 元素（与 SkeletonCanvas 同屏，便于逐一对照） */
+const videoRef = ref<HTMLVideoElement | null>(null)
+
+/** SkeletonCanvas 逐帧上报时间 → 同步驱动视频（漂移超过 0.35s 才回写，避免高频 seek） */
+function onSkeletonTime(sec: number) {
+  const v = videoRef.value
+  if (!v) return
+  const limit = (v.duration || 0) > 0 ? v.duration - 0.05 : sec
+  const target = Math.min(sec, limit)
+  if (Math.abs(v.currentTime - target) > 0.35) v.currentTime = target
+  if (playing.value) {
+    if (v.paused) v.play().catch(() => {})
+  } else if (!v.paused) {
+    v.pause()
+  }
+}
+
+/** 用户手动拖动视频进度条 → 反向定位骨架动画 */
+function onVideoSeeked() {
+  const v = videoRef.value
+  if (v && playerComp.value) playerComp.value.seekSec(v.currentTime)
+}
+
+/** 「中断演示」：暂停骨架动画与视频（结果保留，可再次播放），不取消后端任务 */
+function interruptDemo() {
+  playing.value = false
+  videoRef.value?.pause()
+}
+
+/** 新一轮识别开始时重置演示区（回到 0 点、自动播放） */
+function resetDemo() {
+  playing.value = true
+  const v = videoRef.value
+  if (v) {
+    v.pause()
+    v.currentTime = 0
+  }
+}
+
 onBeforeUnmount(() => {
   if (videoPreview.value) URL.revokeObjectURL(videoPreview.value)
   if (running.value) cancel()
@@ -432,7 +473,6 @@ onMounted(async () => {
         </div>
         <div v-else class="drop__file">
           <p><strong>{{ fileName }}</strong></p>
-          <video v-if="videoPreview" :src="videoPreview" class="drop__video" controls muted playsinline />
           <button type="button" class="link" @click.prevent="clearFile">移除</button>
         </div>
       </label>
@@ -453,7 +493,7 @@ onMounted(async () => {
     <StageLog :log="stageLog" :current="stage" />
 
     <div class="rc__grid">
-      <!-- 左：骨架 -->
+      <!-- 左：感知比对区（原始视频 + 骨架演示同屏，时间轴同步） -->
       <section class="panel" aria-labelledby="vis-title">
         <h2 id="vis-title" class="panel__title">① 感知层：视频 → (T, 27, 3) 骨架张量</h2>
         <div class="vis__meta">
@@ -465,18 +505,52 @@ onMounted(async () => {
           </p>
           <p v-else class="vis__hint">（上传并开始后展示实时提取的骨架）</p>
         </div>
-        <SkeletonCanvas
-          v-if="frames.length"
-          ref="playerComp"
-          :frames="frames"
-          :fps="fps"
-          :highlight-range="
-            activeGloss >= 0 && gloss?.timestamps[activeGloss]
-              ? gloss.timestamps[activeGloss]
-              : undefined
-          "
-          :playing="playing"
-        />
+
+        <!-- 演示控制：播放/暂停与「中断演示」（不打断后端任务，仅停画面） -->
+        <div class="vis__ctrl">
+          <button type="button" class="btn" :disabled="!frames.length" @click="playing = !playing">
+            {{ playing ? '⏸ 暂停演示' : '▶ 播放演示' }}
+          </button>
+          <button type="button" class="btn" :disabled="!frames.length" @click="interruptDemo">
+            ■ 中断演示
+          </button>
+          <span class="vis__ctrl-hint">视频与骨架同屏、时间轴同步；点 gloss 可定位比对</span>
+        </div>
+
+        <div class="vis__compare">
+          <figure class="vis__pane">
+            <figcaption class="vis__pane-label">原始视频</figcaption>
+            <video
+              v-if="videoPreview"
+              ref="videoRef"
+              :src="videoPreview"
+              class="vis__video"
+              controls
+              muted
+              playsinline
+              @seeked="onVideoSeeked"
+            />
+            <p v-else class="vis__hint">（选择视频后在此播放）</p>
+          </figure>
+
+          <figure class="vis__pane">
+            <figcaption class="vis__pane-label">骨架演示（27 点实时渲染）</figcaption>
+            <SkeletonCanvas
+              v-if="frames.length"
+              ref="playerComp"
+              :frames="frames"
+              :fps="fps"
+              :highlight-range="
+                activeGloss >= 0 && gloss?.timestamps[activeGloss]
+                  ? gloss.timestamps[activeGloss]
+                  : undefined
+              "
+              :playing="playing"
+              @time="onSkeletonTime"
+            />
+            <p v-else class="vis__hint">（识别开始后展示实时提取的骨架）</p>
+          </figure>
+        </div>
       </section>
 
       <!-- 右：切分 -->
@@ -687,12 +761,6 @@ onMounted(async () => {
   gap: 0.5rem;
 }
 
-.drop__video {
-  max-width: 100%;
-  max-height: 220px;
-  border-radius: 0.5rem;
-}
-
 .link {
   background: none;
   border: none;
@@ -768,6 +836,53 @@ onMounted(async () => {
 .vis__hint {
   color: var(--color-muted-text, #6b7280);
   font-size: 0.9rem;
+}
+
+/* 视频 ↔ 骨架 同屏比对 */
+.vis__ctrl {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0.6rem 0;
+}
+
+.vis__ctrl-hint {
+  font-size: 0.78rem;
+  color: var(--color-muted-text, #6b7280);
+}
+
+.vis__compare {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.vis__pane {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.vis__pane-label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--color-muted-text, #6b7280);
+}
+
+.vis__video {
+  width: 100%;
+  max-height: 300px;
+  object-fit: contain;
+  background: #0b1020;
+  border-radius: var(--radius, 0.75rem);
+}
+
+@media (max-width: 760px) {
+  .vis__compare {
+    grid-template-columns: 1fr;
+  }
 }
 
 .timeline {
