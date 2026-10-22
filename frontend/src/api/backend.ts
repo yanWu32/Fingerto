@@ -75,7 +75,7 @@ export async function ensureBackendReady(force = false): Promise<boolean> {
   checking.value = true
   try {
     const data = await http.get<HealthData>('/health', {
-      timeout: 4000,
+      timeout: 15000,
     } as never)
     // 防御：serve.py 未带 --backend 时 /api/health 会回退成 SPA 的 HTML（200），
     // axios 仍能「解析」为字符串/对象。必须校验返回的确实是契约结构，

@@ -186,12 +186,16 @@ python tools/verify_perception.py  # MediaPipe 感知层验证
 
 ```bash
 # 在仓库根目录 Fingerto/ 下执行
-python serve.py                 # 默认 127.0.0.1:5173，自动打开浏览器
+python serve.py                 # 默认 127.0.0.1:5173，自动打开浏览器 + 拉起 FastAPI 真实后端
 python serve.py --port 8080     # 自定义端口
 python serve.py --no-browser    # 不自动打开浏览器
-python serve.py --backend       # 同时拉起真实后端（app.app）并把 /api 反代到它
-python serve.py --backend-fastapi  # 同时拉起 FastAPI 后端（REST+SSE）并把 /api 反代到它
+python serve.py --no-backend    # 仅静态 SPA（不启动后端，/recognize 会提示需后端）
+python serve.py --backend       # 改用 Gradio 后端（app.app）
+python serve.py --backend-fastapi  # 显式指定 FastAPI 后端（默认即为该模式）
 ```
+
+> 默认（无参数）即启动 FastAPI 真实后端并把 `/api/*` 反代过去，因此
+> `python serve.py` 打开后 `/recognize` 直接展示后端真实推理结果。
 
 说明：
 
@@ -211,7 +215,7 @@ python serve.py --backend-fastapi  # 同时拉起 FastAPI 后端（REST+SSE）�
    缺失依赖时会列出并说明「依赖不全，无法产出真实结果」。后端错误消息直接透出（400/413/503 等由
    后端 `msg` 给出，前端不自行编造）。接口契约以 `API接口表.md` 为准。
 - `/demo` 与首页为**脚本化演示**（非后端产出），仅用于讲解流程动画；其数据明确标注
-   「脚本化演示（非后端产出）」。真实识别结果请在 `/recognize` 接 `serve.py --backend-fastapi` 查看。
+   「脚本化演示（非后端产出）」。真实识别结果请在 `/recognize` 查看（默认 `python serve.py` 已拉起 FastAPI 后端）。
 
 ---
 

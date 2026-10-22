@@ -134,7 +134,16 @@ def get_predictor(model_name: str, weights_path: Optional[str],
 # ---------------------------------------------------------------------------
 # 依赖探针（/health 用，返回哪些依赖就绪）
 # ---------------------------------------------------------------------------
+# 依赖探针结果会被缓存：__import__ torch/mediapipe/cv2 很慢（冷启动数秒），
+# 若每次 /health 都重跑会让前端首次探测超时误判「后端不可达」。
+# 进程内只探测一次，状态变化需重启后端（依赖安装属于环境变更，本就需重启）。
+_DEPS_CACHE: Dict[str, bool] | None = None
+
+
 def probe_deps() -> Dict[str, bool]:
+    global _DEPS_CACHE
+    if _DEPS_CACHE is not None:
+        return _DEPS_CACHE
     deps = {}
     for name, mod in [("torch", "torch"), ("mediapipe", "mediapipe"),
                       ("opencv", "cv2"), ("fastapi", "fastapi")]:
@@ -143,6 +152,7 @@ def probe_deps() -> Dict[str, bool]:
             deps[name] = True
         except Exception:
             deps[name] = False
+    _DEPS_CACHE = deps
     return deps
 
 

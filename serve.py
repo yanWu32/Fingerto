@@ -2,16 +2,17 @@
 
 用法（在本仓库根目录执行）：
 
-    python serve.py                 # 默认 127.0.0.1:5173，并自动打开浏览器
+    python serve.py                 # 默认 127.0.0.1:5173，并自动拉起 FastAPI 后端（app.server）
     python serve.py --port 8080     # 自定义端口
     python serve.py --no-browser    # 不自动打开浏览器
-    python serve.py --backend       # 同时拉起真实后端（app.app）并把 /api 反代到它
+    python serve.py --no-backend    # 不启动任何后端（仅静态 SPA，/recognize 会提示需后端）
+    python serve.py --backend       # 改用 Gradio 后端（app.app）
+    python serve.py --backend-fastapi  # 显式指定 FastAPI 后端（与默认一致）
 
 说明：
-- 前端是构建好的 Vue SPA（frontend/dist），默认处于 mock 模式（VITE_USE_MOCK=true），
-  无需后端即可完整演示「手语视频 → 文本 → 任务执行」全链路（含 /demo 页面）。
-- 带 --backend 时，会在子线程启动 app.app（Gradio 后端，需已安装 gradio/mediapipe 等），
-  并把所有 /api/* 请求反代到后端端口，从而切换到真实数据。
+- 默认即启动 FastAPI 真实后端（app.server，REST+SSE），并把所有 /api/* 反代到它，
+  因此 /recognize 等页面默认展示后端真实推理结果（无需额外参数）。
+- 仅当显式传 --no-backend 时才是纯静态 SPA（此时 /recognize 会直接报错提示需启动后端）。
 - 纯标准库实现，不依赖第三方包；SPA 历史路由（如 /demo 深链）自动回退到 index.html。
 """
 from __future__ import annotations
@@ -187,9 +188,11 @@ def main() -> None:
     parser.add_argument("--host", default="127.0.0.1", help="监听地址（默认 127.0.0.1）")
     parser.add_argument("--port", type=int, default=DEFAULT_PORT, help="监听端口（默认 5173）")
     parser.add_argument("--dir", default=DEFAULT_DIST, help="SPA 构建目录（默认 frontend/dist）")
-    parser.add_argument("--backend", action="store_true", help="同时拉起真实后端(Gradio)并反代 /api")
+    parser.add_argument("--backend", action="store_true", help="改用 Gradio 后端(app.app)并反代 /api")
     parser.add_argument("--backend-fastapi", action="store_true",
-                        help="同时拉起 FastAPI 后端(app.server, REST+SSE)并反代 /api")
+                        help="显式指定 FastAPI 后端(app.server, REST+SSE)并反代 /api（默认即为该模式）")
+    parser.add_argument("--no-backend", action="store_true",
+                        help="不启动任何后端，仅提供静态 SPA（/recognize 会提示需启动后端）")
     parser.add_argument("--backend-port", type=int, default=DEFAULT_BACKEND_PORT, help="后端端口")
     parser.add_argument("--no-browser", action="store_true", help="不自动打开浏览器")
     args = parser.parse_args()
@@ -200,10 +203,16 @@ def main() -> None:
         print("        请先构建前端：cd frontend && npm run build", file=sys.stderr)
         sys.exit(1)
 
-    use_backend = args.backend or args.backend_fastapi
+    # 默认即启动 FastAPI 真实后端；仅 --no-backend 时关闭；--backend 切到 Gradio。
+    if args.no_backend:
+        use_backend, fastapi = False, False
+    elif args.backend:
+        use_backend, fastapi = True, False
+    else:
+        use_backend, fastapi = True, True
     backend_port = args.backend_port if use_backend else None
     if use_backend:
-        t = threading.Thread(target=start_backend, args=(args.backend_port, args.backend_fastapi),
+        t = threading.Thread(target=start_backend, args=(args.backend_port, fastapi),
                             daemon=True)
         t.start()
 
@@ -216,11 +225,14 @@ def main() -> None:
     print("=" * 56)
     print("  手语对话系统 · 前端已启动")
     print(f"  → 打开：{url}")
-    print(f"  → 全链路演示页：{url}demo")
-    if args.backend:
+    print(f"  → 视频识别（真实后端）：{url}recognize")
+    print(f"  → 脚本化演示页：{url}demo")
+    if use_backend and not fastapi:
         print(f"  → 真实后端 Gradio（反代 /api）：http://127.0.0.1:{args.backend_port}/")
-    if args.backend_fastapi:
+    if use_backend and fastapi:
         print(f"  → FastAPI 后端（REST+SSE，反代 /api）：http://127.0.0.1:{args.backend_port}/")
+    if not use_backend:
+        print("  （已 --no-backend：纯静态，/recognize 将提示需启动后端）")
     print("  按 Ctrl+C 停止")
     print("=" * 56)
 
