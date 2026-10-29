@@ -7,6 +7,10 @@ export interface GlossResult {
   gloss_sequence: string[]
   confidence: number[]
   timestamps: [number, number][]
+  /** 可选：每个词的 top1-top2 概率差，判别力指标（后端 margin_top1_top2） */
+  margin_top1_top2?: number[]
+  /** 可选：margin<0.2 标记为低判别力（后端 low_confidence） */
+  low_confidence?: boolean[]
 }
 
 /** 智能体层输出（智能体 → 应用 契约，对应 contract.AGENT_SCHEMA）
@@ -25,9 +29,6 @@ export interface PipelineResult {
   agent: AgentResult
 }
 
-/** 识别请求入参（前端 → 后端识别层）。
- * 后端真实接口可选上传视频/骨架；此处仅声明契约字段，真实字段以后端 OpenAPI 为准。 */
-export interface RecognitionRequest {
-  /** 视频/骨架数据标识或 base64；真实字段待后端定稿 */
-  source?: string
-}
+/** 请求入参说明：识别 / pipeline 端点均为 multipart 上传视频（见 API接口表.md），
+ * 可选参数（model / device / ctx_frames / useAgent）见各 api 模块的 Options 接口；
+ * 已被后端契约取代的 source 字段不再声明。 */

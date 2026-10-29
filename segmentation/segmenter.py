@@ -72,7 +72,7 @@ DEFAULTS: Dict[str, Any] = {
         "min_segment_frames": 8,       # 短于此的片段视为噪声丢弃
         "max_segment_frames": 120,     # 长于此强制截断
         "smoothing_window": 3,         # 速度序列平滑窗口
-        "adaptive_k": 3.0,             # 自适应阈值倍数
+        "adaptive_k": 1.0,             # 自适应阈值倍数（与 configs/segmentation.yaml 保持一致；3.0 会导致段仅剩能量峰值，过短）
         "adaptive_method": "mad",      # mad(鲁棒) | std
     },
     "window": {

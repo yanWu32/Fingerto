@@ -171,9 +171,51 @@ python tools/verify_perception.py  # MediaPipe 感知层验证
 - [x] 实验层：消融评测脚本与指标采集（`experiments/`，TASK-004 验收 bbe3857；真实 LLM API 跑批待做）
   - [x] **识别层真实指标已闭环**：`train.py` 输出 Top-1/Top-5；`run_ablation.py` 闭环 5 场景 × 4 系统
 - [x] **四层端到端联调打通**（2026-10-19）：新增 `app/e2e_pipeline.py`，把 `SkeletonSegmenter`(切分) → `Predictor`(识别) → 合并 gloss JSON → `AgentPipeline`(智能体) 串起来，全程过 `tests/contract` 校验；合成连续序列 + 真实 ISW-1000 权重均验证通过（含真实伪连续序列：4 词拼接 → 切分 → 识别出 gloss）。可用 `python -m app.e2e_pipeline [--weights <pt> --classes glosses.txt]` 复跑。
+- [x] **前端：视频识别入口（真实后端对接）**：新增 `/recognize` 页面（仅视频上传 ≤50MB + 开始/取消 + 动态演示全链路）；
+  统一 `/api` 调用，运行时 `GET /health` 探测 + 自动 mock 降级；SSE（`/pipeline/stream`）逐事件驱动 UI；
+  抽离 `StageLog`/`GlossBoard`/`AgentSteps` 共享组件，并把安全敏感的 `v-html` 收敛到 `utils/sanitize.ts`
 - [ ] 全链路集成联调（真实摄像头 + 真实 LLM API）
 - [ ] 中文真实数据（ISW-1000 / CSL 申请中）→ 复跑识别层真实指标，替换 WLASL100 为论文主结论
 - [ ] 消融实验（真实 LLM）与论文撰写
+
+---
+
+## 十、快速预览前端（无需后端）
+
+如果你习惯"运行一个文件就打开网页"的体验，根目录的 `serve.py` 即可一键启动前端 SPA：
+
+```bash
+# 在仓库根目录 Fingerto/ 下执行
+python serve.py                 # 默认 127.0.0.1:5173，自动打开浏览器 + 拉起 FastAPI 真实后端
+python serve.py --port 8080     # 自定义端口
+python serve.py --no-browser    # 不自动打开浏览器
+python serve.py --no-backend    # 仅静态 SPA（不启动后端，/recognize 会提示需后端）
+python serve.py --backend       # 改用 Gradio 后端（app.app）
+python serve.py --backend-fastapi  # 显式指定 FastAPI 后端（默认即为该模式）
+```
+
+> 默认（无参数）即启动 FastAPI 真实后端并把 `/api/*` 反代过去，因此
+> `python serve.py` 打开后 `/recognize` 直接展示后端真实推理结果。
+
+说明：
+
+- 前端构建产物在 `frontend/dist`，**默认 mock 模式**（`VITE_USE_MOCK=true`），无需后端即可完整演示
+  「手语视频 → 文本 → 任务执行」全链路（含 `/demo` 页面）。首次使用需先构建：
+  `cd frontend && npm install && npm run build`。
+- SPA 历史路由（如 `/demo`、`/recognize` 深链）会自动回退到 `index.html`，刷新不会 404。
+- 带 `--backend` / `--backend-fastapi` 时会在子线程启动对应后端并把 `/api/*` 反代过去。
+  **前端统一以 `/api` 调用**，代理层负责剥离 `/api` 前缀（后端 `server.py` 路由本身不带前缀），
+  并对 `text/event-stream`（SSE）逐字节流式转发，保证「识别过程中动态演示过程」。
+  FastAPI 模式下，前端会先 `GET /api/health` 探测：后端 `ready=true` 走真实 SSE 流式识别，
+  否则（ready=false 或后端未启动）直接报错说明原因，不展示任何前端虚拟数据（UI 顶部「当前模式」徽标明示）。
+- **新增视频识别入口**：打开 `/recognize`（顶部「视频识别」或首页 CTA），上传手语视频（仅视频，≤50MB），
+  点「开始识别」即可动态演示 感知 → 骨架 → 切分 → 识别 → 智能体 → 应用 全链路，并支持「取消」。
+   页面顶部实时显示「当前模式」与耗时计时（CPU 单视频约 100s，故需进度反馈）；下方展示
+   `/health` 探测到的依赖明细（`torch/mediapipe/opencv` 各自 ✓/✗）与已加载模型，
+   缺失依赖时会列出并说明「依赖不全，无法产出真实结果」。后端错误消息直接透出（400/413/503 等由
+   后端 `msg` 给出，前端不自行编造）。接口契约以 `API接口表.md` 为准。
+- `/demo` 与首页为**脚本化演示**（非后端产出），仅用于讲解流程动画；其数据明确标注
+   「脚本化演示（非后端产出）」。真实识别结果请在 `/recognize` 查看（默认 `python serve.py` 已拉起 FastAPI 后端）。
 
 ---
 

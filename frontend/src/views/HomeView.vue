@@ -18,6 +18,14 @@ async function runDemo() {
   error.value = ''
   try {
     // 所有接口请求必须 try/catch（规范 4.4）
+    // 真实模式下 /pipeline 需要上传视频文件；首页没有上传入口，
+    // 因此真实模式不在此处臆造结果，而是引导到 /recognize 上传视频。
+    if (!USE_MOCK) {
+      recognition.value = null
+      agent.value = null
+      error.value = '真实模式需要上传视频：请前往「视频识别」页上传后查看后端真实结果。'
+      return
+    }
     const res = await runPipeline()
     recognition.value = res.recognition
     agent.value = res.agent
@@ -36,14 +44,27 @@ onMounted(runDemo)
     <section class="home__hero">
       <h1 class="home__title">基于 LLM 智能体的手语对话系统</h1>
       <p class="home__subtitle">词级 / 短语级手语对话演示 · 感知 → 识别 → 智能体 → 应用 四层解耦</p>
+      <div class="home__cta">
+        <RouterLink to="/recognize" class="home__cta-link">
+          上传手语视频开始识别 →
+        </RouterLink>
+        <RouterLink to="/demo" class="home__cta-link home__cta-link--ghost">
+          查看全链路脚本演示 →
+        </RouterLink>
+      </div>
     </section>
 
     <section class="home__demo" aria-labelledby="demo-title">
       <div class="home__demo-head">
-        <h2 id="demo-title">识别链路演示（{{ USE_MOCK ? 'mock 数据' : '真实后端' }}）</h2>
-        <button type="button" class="home__btn" :disabled="loading" @click="runDemo">
-          {{ loading ? '加载中…' : '重新演示' }}
-        </button>
+        <h2 id="demo-title">
+          识别链路演示（{{ USE_MOCK ? '内置示例数据（非后端产出）' : '真实后端' }}）
+        </h2>
+        <div class="home__demo-actions">
+          <RouterLink to="/demo" class="home__link">查看全链路演示 →</RouterLink>
+          <button type="button" class="home__btn" :disabled="loading" @click="runDemo">
+            {{ loading ? '加载中…' : '重新演示' }}
+          </button>
+        </div>
       </div>
 
       <p v-if="error" role="alert" class="home__error">
@@ -104,12 +125,57 @@ onMounted(runDemo)
   margin: 0;
 }
 
+.home__cta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  justify-content: center;
+  margin-top: 1.1rem;
+}
+
+.home__cta-link {
+  display: inline-block;
+  padding: 0.6rem 1.2rem;
+  border-radius: 0.6rem;
+  background: var(--color-primary, #2563eb);
+  color: #fff;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.home__cta-link--ghost {
+  background: transparent;
+  color: var(--color-primary, #2563eb);
+  border: 1px solid var(--color-primary, #2563eb);
+}
+
 .home__demo-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
   margin-bottom: 1rem;
+}
+
+.home__demo-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.home__link {
+  padding: 0.5rem 1.1rem;
+  border: 1px solid var(--color-primary, #2563eb);
+  border-radius: var(--radius, 0.75rem);
+  color: var(--color-primary, #2563eb);
+  text-decoration: none;
+  font-size: 0.95rem;
+  white-space: nowrap;
+  transition: background 0.15s ease;
+}
+
+.home__link:hover {
+  background: #eff6ff;
 }
 
 .home__btn {

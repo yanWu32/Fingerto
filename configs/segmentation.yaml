@@ -10,6 +10,8 @@ energy:
   min_segment_frames: 8       # 短于此长度的片段视为噪声丢弃
   max_segment_frames: 120     # 长于此长度强制截断
   smoothing_window: 3         # 速度序列平滑窗口
+  adaptive_k: 1.0             # 自适应阈值倍数（原 3.0 → 1.0：实测段数 3→15，缓解短段问题；单独调 velocity_threshold 无效，见 doc）
+  adaptive_method: mad        # mad(鲁棒) | std
 
 # ---------- 滑动窗口细识别 ----------
 window:

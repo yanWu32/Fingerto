@@ -1,0 +1,253 @@
+"""一键启动入口：运行一个文件即可在浏览器打开前端页面。
+
+用法（在本仓库根目录执行）：
+
+    python serve.py                 # 默认 127.0.0.1:5173，并自动拉起 FastAPI 后端（app.server）
+    python serve.py --port 8080     # 自定义端口
+    python serve.py --no-browser    # 不自动打开浏览器
+    python serve.py --no-backend    # 不启动任何后端（仅静态 SPA，/recognize 会提示需后端）
+    python serve.py --backend       # 改用 Gradio 后端（app.app）
+    python serve.py --backend-fastapi  # 显式指定 FastAPI 后端（与默认一致）
+
+说明：
+- 默认即启动 FastAPI 真实后端（app.server，REST+SSE），并把所有 /api/* 反代到它，
+  因此 /recognize 等页面默认展示后端真实推理结果（无需额外参数）。
+- 仅当显式传 --no-backend 时才是纯静态 SPA（此时 /recognize 会直接报错提示需启动后端）。
+- 纯标准库实现，不依赖第三方包；SPA 历史路由（如 /demo 深链）自动回退到 index.html。
+"""
+from __future__ import annotations
+
+import argparse
+import http.client
+import http.server
+import mimetypes
+import os
+import sys
+import threading
+import webbrowser
+from urllib.parse import urlparse
+
+# 确保 .js / .mjs 以正确的 MIME 返回（避免某些环境下被当成 text/plain 触发 CSP 拦截）
+mimetypes.add_type("text/javascript", ".js")
+mimetypes.add_type("text/javascript", ".mjs")
+mimetypes.add_type("application/json", ".json")
+
+ROOT = os.path.dirname(os.path.abspath(__file__))
+DEFAULT_DIST = os.path.join(ROOT, "frontend", "dist")
+DEFAULT_PORT = 5173
+DEFAULT_BACKEND_PORT = 8000
+
+
+class SpaHandler(http.server.SimpleHTTPRequestHandler):
+    """静态服务 SPA：文件存在则正常返回，否则回退到 index.html（支持 history 路由）。"""
+
+    def __init__(self, *args, backend_port: int | None = None, **kwargs):
+        self.backend_port = backend_port
+        super().__init__(*args, **kwargs)
+
+    def end_headers(self) -> None:  # noqa: D401 - override to add SPA headers
+        self.send_header("Cache-Control", "no-cache")
+        super().end_headers()
+
+    def _serve_spa_index(self) -> None:
+        index_path = os.path.join(self.directory, "index.html")  # type: ignore[attr-defined]
+        try:
+            with open(index_path, "rb") as f:
+                data = f.read()
+        except OSError:
+            self.send_error(404, "index.html not found (run `npm run build` first)")
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def do_GET(self) -> None:  # noqa: N802 - http.server API
+        # /api/* GET（如 /api/health、/api/skeleton/{id}）直接反代到后端；其余按 SPA 静态处理
+        path = urlparse(self.path).path
+        if self.backend_port and path.startswith("/api"):
+            return self._proxy_to_backend("GET")
+        rel = path.lstrip("/")
+        candidate = os.path.normpath(os.path.join(self.directory, rel))  # type: ignore[attr-defined]
+        if rel and os.path.isfile(candidate):
+            return super().do_GET()
+        return self._serve_spa_index()
+
+    def do_POST(self) -> None:  # noqa: N802 - http.server API
+        path = urlparse(self.path).path
+        if self.backend_port is None or not path.startswith("/api"):
+            self.send_error(404, "No backend proxy enabled for this path")
+            return
+        self._proxy_to_backend("POST")
+
+    def _proxy_to_backend(self, method: str) -> None:  # noqa: N802 - http.server API
+        parsed = urlparse(self.path)
+        # 后端 server.py 路由本身不带 /api 前缀，这里把 /api 前缀剥掉再转发
+        target_path = parsed.path[4:] if parsed.path.startswith("/api") else parsed.path
+        if not target_path:
+            target_path = "/"
+        target = target_path + (f"?{parsed.query}" if parsed.query else "")
+        length = int(self.headers.get("Content-Length", 0) or 0)
+        body = self.rfile.read(length) if length else None
+        headers = {k: v for k, v in self.headers.items() if k.lower() != "host"}
+        try:
+            conn = http.client.HTTPConnection(
+                "127.0.0.1", self.backend_port, timeout=600  # type: ignore[arg-type]
+            )
+            conn.request(method, target, body=body, headers=headers)
+            resp = conn.getresponse()
+        except Exception as e:  # noqa: BLE001 - 代理失败给出清晰报错
+            self.send_error(502, f"backend proxy error: {e}")
+            return
+        # 逐块转发；SSE 必须逐字节 flush（见下），其余响应用 8KB 块以减少系统调用。
+        try:
+            self.send_response(resp.status)
+            for k, v in resp.getheaders():
+                kl = k.lower()
+                if kl in ("transfer-encoding", "connection", "keep-alive"):
+                    continue
+                self.send_header(k, v)
+            self.end_headers()
+            if "text/event-stream" in (resp.getheader("Content-Type", "") or ""):
+                # SSE 关键：必须为 read(1)。http.client 的 chunked 读取器会一直读到
+                # amt 字节或流结束，用 read(8192) 会把整条 SSE 缓冲到结束才一次性回写；
+                # read(1) 则按服务端每个 chunk 边界即时 flush（chunk 内字节连续快速回写，
+                # chunk 之间才阻塞等待），前端才能「识别过程中动态演示过程」。
+                while True:
+                    chunk = resp.read(1)
+                    if not chunk:
+                        break
+                    try:
+                        self.wfile.write(chunk)
+                        self.wfile.flush()
+                    except Exception:  # 客户端中断（如 AbortController 取消）
+                        break
+            else:
+                while True:
+                    chunk = resp.read(8192)
+                    if not chunk:
+                        break
+                    try:
+                        self.wfile.write(chunk)
+                    except Exception:
+                        break
+                try:
+                    self.wfile.flush()
+                except Exception:
+                    pass
+        finally:
+            conn.close()
+
+    def log_message(self, fmt: str, *args: object) -> None:  # 精简日志，只打印访问行
+        sys.stderr.write("[serve] %s - %s\n" % (self.address_string(), fmt % args))
+
+
+def start_backend(backend_port: int, fastapi: bool = False) -> None:
+    """在子线程拉起真实后端，失败则仅告警，不影响前端。
+
+    fastapi=False → 拉起 Gradio 应用（app.app）；
+    fastapi=True  → 拉起 FastAPI 服务（app.server，REST + SSE）。
+    前端所有 /api/* 请求会被反代到 backend_port。
+    """
+    if fastapi:
+        try:
+            from app import server as server_mod  # 懒加载：缺依赖时不崩
+        except Exception as e:  # noqa: BLE001
+            print(f"[serve] 无法导入后端 app.server（可能缺少依赖）：{e}", file=sys.stderr)
+            return
+        try:
+            import uvicorn
+            print(f"[serve] 正在启动 FastAPI 后端（端口 {backend_port}）…")
+            uvicorn.run(server_mod.app, host="127.0.0.1", port=backend_port,
+                        log_level="info")
+        except Exception as e:  # noqa: BLE001
+            print(f"[serve] FastAPI 后端启动失败：{e}", file=sys.stderr)
+        return
+
+    try:
+        from app import app as app_mod  # 懒加载：缺依赖时不崩
+    except Exception as e:  # noqa: BLE001
+        print(f"[serve] 无法导入后端 app.app（可能缺少依赖）：{e}", file=sys.stderr)
+        return
+    try:
+        print(f"[serve] 正在启动真实后端 app.app（端口 {backend_port}）…")
+        app_mod.launch(server_name="127.0.0.1", server_port=backend_port, show_error=True)
+    except Exception as e:  # noqa: BLE001
+        print(f"[serve] 后端启动失败：{e}", file=sys.stderr)
+
+
+def build_handler(backend_port: int | None, dist_dir: str):
+    def factory(*args, **kwargs):
+        return SpaHandler(*args, directory=dist_dir, backend_port=backend_port, **kwargs)
+    return factory
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="一键启动前端 SPA（默认 mock 模式）")
+    parser.add_argument("--host", default="127.0.0.1", help="监听地址（默认 127.0.0.1）")
+    parser.add_argument("--port", type=int, default=DEFAULT_PORT, help="监听端口（默认 5173）")
+    parser.add_argument("--dir", default=DEFAULT_DIST, help="SPA 构建目录（默认 frontend/dist）")
+    parser.add_argument("--backend", action="store_true", help="改用 Gradio 后端(app.app)并反代 /api")
+    parser.add_argument("--backend-fastapi", action="store_true",
+                        help="显式指定 FastAPI 后端(app.server, REST+SSE)并反代 /api（默认即为该模式）")
+    parser.add_argument("--no-backend", action="store_true",
+                        help="不启动任何后端，仅提供静态 SPA（/recognize 会提示需启动后端）")
+    parser.add_argument("--backend-port", type=int, default=DEFAULT_BACKEND_PORT, help="后端端口")
+    parser.add_argument("--no-browser", action="store_true", help="不自动打开浏览器")
+    args = parser.parse_args()
+
+    dist_dir = os.path.abspath(args.dir)
+    if not os.path.isdir(dist_dir) or not os.path.isfile(os.path.join(dist_dir, "index.html")):
+        print(f"[serve] 找不到构建产物：{dist_dir}/index.html", file=sys.stderr)
+        print("        请先构建前端：cd frontend && npm run build", file=sys.stderr)
+        sys.exit(1)
+
+    # 默认即启动 FastAPI 真实后端；仅 --no-backend 时关闭；--backend 切到 Gradio。
+    if args.no_backend:
+        use_backend, fastapi = False, False
+    elif args.backend:
+        use_backend, fastapi = True, False
+    else:
+        use_backend, fastapi = True, True
+    backend_port = args.backend_port if use_backend else None
+    if use_backend:
+        t = threading.Thread(target=start_backend, args=(args.backend_port, fastapi),
+                            daemon=True)
+        t.start()
+
+    handler = build_handler(backend_port, dist_dir)
+    httpd = http.server.ThreadingHTTPServer((args.host, args.port), handler)
+    # 让 SimpleHTTPRequestHandler 知道根目录
+    http.server.SimpleHTTPRequestHandler.directory = dist_dir
+
+    url = f"http://{args.host}:{args.port}/"
+    print("=" * 56)
+    print("  手语对话系统 · 前端已启动")
+    print(f"  → 打开：{url}")
+    print(f"  → 视频识别（真实后端）：{url}recognize")
+    print(f"  → 脚本化演示页：{url}demo")
+    if use_backend and not fastapi:
+        print(f"  → 真实后端 Gradio（反代 /api）：http://127.0.0.1:{args.backend_port}/")
+    if use_backend and fastapi:
+        print(f"  → FastAPI 后端（REST+SSE，反代 /api）：http://127.0.0.1:{args.backend_port}/")
+    if not use_backend:
+        print("  （已 --no-backend：纯静态，/recognize 将提示需启动后端）")
+    print("  按 Ctrl+C 停止")
+    print("=" * 56)
+
+    if not args.no_browser:
+        try:
+            webbrowser.open(url)
+        except Exception:  # noqa: BLE001
+            pass
+
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        print("\n[serve] 已停止。")
+        httpd.shutdown()
+
+
+if __name__ == "__main__":
+    main()
