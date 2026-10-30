@@ -40,11 +40,21 @@
 └───────────────────────┬──────────────────────────────┘
                         │ {natural_language, intent, task, clarification}
 ┌───────────────────────▼──────────────────────────────┐
-│ 应用层                                                 │
-│  Gradio 界面（摄像头 / 可视化 / 对话历史 / FPS）        │
-│  场景：信息查询 + 模拟智能家居控制                       │
-└──────────────────────────────────────────────────────┘
+│ 应用层（两种前端壳，共用同一套感知/识别/智能体代码）    │
+│ ① Gradio 界面（app/app.py，正式验收形态）              │
+│    摄像头 / 视频输入 · 对话历史 · FPS · 模拟智能家居    │
+│ ② Vue SPA（frontend/ + app/server.py FastAPI，联调演示）│
+│    上传视频 → /api/pipeline/stream(SSE) 全链路动画       │
+└────────────────────────────────────────────────────────┘
 ```
+
+> **应用层双前端说明**：本层保留两套前端壳，二者**共用同一套 `perception/`、
+> `recognition/`、`agent/` 代码**，只是不同的用户界面，不互斥：
+> - **Gradio（`app/app.py`）= 毕设原方案的正式验收形态**（摄像头 / 视频实时演示，
+>   对话历史 + FPS + 模拟智能家居控制）；
+> - **Vue SPA（`frontend/` + `app/server.py`）= 联调 / 演示补充**（上传视频离线验证，
+>   SSE 流式动画，便于截图 / 录屏进论文）。
+> 按需选择；详细用法见「十、快速预览前端」与 `API接口表.md`。
 
 ### 层间数据契约
 
@@ -73,7 +83,7 @@
 | **手势切分** | **运动能量粗切分**（手腕速度低于阈值持续 N 帧判边界）+ **滑动窗口细识别**（30 帧窗口 + 时序平滑 / Viterbi）组合 |
 | **识别层** | 基线锁 **ST-GCN**（时空图卷积）；对比 Transformer+GCN、轻量 CNN+LSTM；输出 Top-1 / Top-5 + 延迟 |
 | **智能体层** | 三步提示管线（确认 → 翻译 → 决策）；对话状态管理；**置信度路由消歧**（默认 <0.4 澄清）；云端 LLM API 主用 + 本地降级 + 高频词缓存 |
-| **应用层** | Gradio；信息查询与模拟智能家居两类场景，无需真实硬件 |
+| **应用层** | 双前端壳（共用同一套感知/识别/智能体代码）：① **Gradio**（`app/app.py`，正式验收形态，摄像头/视频实时 + 模拟智能家居）；② **Vue SPA**（`frontend/` + `app/server.py` FastAPI，联调/演示补充，上传视频离线 + SSE 全链路动画）。信息查询与模拟智能家居两类场景，无需真实硬件 |
 
 ## 四、技术栈
 
@@ -82,7 +92,7 @@
 | 感知 | OpenCV 4.x + MediaPipe | RTMPose |
 | 识别 | PyTorch + ST-GCN | Transformer+GCN / CNN+LSTM |
 | 智能体 | 云端 LLM API（DeepSeek 主 / Qwen 备） | Qwen2.5-3B 本地 (Ollama) |
-| 界面 | Gradio | PyQt |
+| 界面 | Gradio（正式验收形态，`app/app.py`）＋ Vue SPA（联调/演示补充，`frontend/` + `app/server.py`） | PyQt |
 | 环境模拟 | Python dict / JSON | 智能家居模拟器 |
 | 工程 | Git + Anaconda | venv |
 
@@ -94,7 +104,10 @@ Fingerto/
 ├── segmentation/    # 运动能量检测 + 滑动窗口切分
 ├── recognition/     # datasets / models(stgcn…) / train / eval / infer
 ├── agent/           # llm_client / prompt_pipeline / dialogue_state / disambiguation / intent
-├── app/             # gradio_app.py
+├── app/             # Gradio 应用层（app.py）+ FastAPI 后端（server.py，给 Vue 前端用）
+├── frontend/        # Vue SPA（联调/演示补充）：/recognize 上传视频 + SSE 全链路动画
+│   ├── src/         # views / components / api（统一 /api + SSE + mock 开关）
+│   └── dist/        # 构建产物（serve.py 直接托管）
 ├── data/            # 数据集 + processed + testset（不入库）
 ├── experiments/     # build_testset / run_ablation / metrics
 ├── configs/         # recognition.yaml / agent.yaml / experiment.yaml
@@ -167,7 +180,9 @@ python tools/verify_perception.py  # MediaPipe 感知层验证
   - [x] **真实数据训练已产出**：WLASL100（665 视频 / 100 类）抽 27 点骨架 + ST-GCN/CNN-LSTM/Transformer-GCN 三模型训练，指标见 `experiments/results/wlasl100_real_training.md`（32747ef）
 - [x] 智能体层：三步提示管线 + 对话状态 + System A/B/C/D + 缓存 + LLM 客户端（`agent/`）
 - [x] 数据层：合成 60 类 + CSL/WLASL 加载器与 WLASL→27 点提取管线（`data/`）
-- [x] 应用层：Gradio 端到端 Demo（`app/app.py` + `pipeline_demo.py`，TASK-003 验收 bbe3857；真实摄像头+LLM API 联调待做）
+- [x] 应用层：**双前端壳**（共用同一套感知/识别/智能体代码）
+  - [x] ① Gradio 端到端 Demo（`app/app.py` + `pipeline_demo.py`，TASK-003 验收 bbe3857，**正式验收形态**；真实摄像头+LLM API 联调待做）
+  - [x] ② Vue SPA 联调/演示补充（`frontend/` + `app/server.py` FastAPI，`/recognize` 上传视频 + SSE 全链路动画；**结果严格用后端真实输出，无 mock 降级**）
 - [x] 实验层：消融评测脚本与指标采集（`experiments/`，TASK-004 验收 bbe3857；真实 LLM API 跑批待做）
   - [x] **识别层真实指标已闭环**：`train.py` 输出 Top-1/Top-5；`run_ablation.py` 闭环 5 场景 × 4 系统
 - [x] **四层端到端联调打通**（2026-10-19）：新增 `app/e2e_pipeline.py`，把 `SkeletonSegmenter`(切分) → `Predictor`(识别) → 合并 gloss JSON → `AgentPipeline`(智能体) 串起来，全程过 `tests/contract` 校验；合成连续序列 + 真实 ISW-1000 权重均验证通过（含真实伪连续序列：4 词拼接 → 切分 → 识别出 gloss）。可用 `python -m app.e2e_pipeline [--weights <pt> --classes glosses.txt]` 复跑。
@@ -180,7 +195,19 @@ python tools/verify_perception.py  # MediaPipe 感知层验证
 
 ---
 
-## 十、快速预览前端（无需后端）
+## 十、快速预览前端（两种前端壳）
+
+本系统保留**两套应用层前端壳**，按需选择：
+
+| 前端壳 | 入口 | 用途 | 启动方式 |
+|---|---|---|---|
+| **Gradio（正式验收形态）** | `app/app.py` | 摄像头 / 视频实时演示 + 对话历史 + 模拟智能家居 | `python -m app.app`（或 `serve.py --backend` 走 Gradio 后端） |
+| **Vue SPA（联调 / 演示补充）** | `frontend/` + `app/server.py` | 上传视频离线验证 + SSE 全链路动画（便于截图 / 录屏进论文） | `python serve.py`（默认拉起 FastAPI 后端） |
+
+> 二者**共用同一套 `perception/`、`recognition/`、`agent/` 代码**，不互斥；
+> 区别仅在「输入方式（摄像头 vs 上传视频）」与「界面（Gradio vs Vue）」。
+
+### Vue SPA（`serve.py`，默认模式）
 
 如果你习惯"运行一个文件就打开网页"的体验，根目录的 `serve.py` 即可一键启动前端 SPA：
 
@@ -216,6 +243,19 @@ python serve.py --backend-fastapi  # 显式指定 FastAPI 后端（默认即为�
    后端 `msg` 给出，前端不自行编造）。接口契约以 `API接口表.md` 为准。
 - `/demo` 与首页为**脚本化演示**（非后端产出），仅用于讲解流程动画；其数据明确标注
    「脚本化演示（非后端产出）」。真实识别结果请在 `/recognize` 查看（默认 `python serve.py` 已拉起 FastAPI 后端）。
+
+### Gradio（`app/app.py`，正式验收形态）
+
+```bash
+# 直接启动 Gradio 应用层（摄像头 / 视频实时演示 + 对话历史 + 模拟智能家居）
+python -m app.app
+# 或经由 serve.py（会把 Gradio 拉起为 /api 后端，但 Vue 前端默认对接的是 FastAPI）
+python serve.py --backend
+```
+
+> Gradio 与 Vue SPA 共用同一套感知 / 识别 / 智能体代码（`perception/`、`recognition/`、`agent/`），
+> 区别仅在输入方式（摄像头 vs 上传视频）与界面（Gradio vs Vue）。
+> 论文截图 / 录屏推荐用 Vue SPA（`/recognize`）；实时演示 / 验收推荐用 Gradio。
 
 ---
 

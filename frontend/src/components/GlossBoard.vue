@@ -20,6 +20,8 @@ const props = defineProps<{
   /** 低置信阈值（分档用）：high>=0.75, mid>=clarify(0.4), 其余 low */
   highThreshold?: number
   clarifyThreshold?: number
+  /** 结果来源标签（可选）：如「来源：推送词表（非识别产出）」，显示在面板右下角 */
+  sourceLabel?: string
 }>()
 
 const emit = defineEmits<{ (e: 'seek', index: number): void }>()
@@ -78,6 +80,8 @@ function confLevel(c: number): 'high' | 'mid' | 'low' {
       </table>
       <p class="windows__note">重叠窗口经 vote 投票与时间合并后，得到上方 gloss 序列。</p>
     </details>
+
+    <p v-if="sourceLabel && gloss" class="gloss__source">{{ sourceLabel }}</p>
   </section>
 </template>
 
@@ -192,6 +196,14 @@ function confLevel(c: number): 'high' | 'mid' | 'low' {
 
 .windows__note {
   margin: 0.4rem 0 0;
+  color: var(--color-muted-text, #6b7280);
+}
+
+/* 结果来源标签（如：推送词表），右对齐小字 */
+.gloss__source {
+  margin: 0.7rem 0 0;
+  text-align: right;
+  font-size: 0.75rem;
   color: var(--color-muted-text, #6b7280);
 }
 

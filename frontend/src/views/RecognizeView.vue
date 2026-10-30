@@ -13,12 +13,15 @@ import PipelineFlow from '@/components/PipelineFlow.vue'
 import StageLog from '@/components/StageLog.vue'
 import GlossBoard from '@/components/GlossBoard.vue'
 import AgentSteps from '@/components/AgentSteps.vue'
+import SpeechButton from '@/components/SpeechButton.vue'
+import EnvDiffPanel from '@/components/EnvDiffPanel.vue'
 import type { PipelineStageName, StageSnapshot } from '@/api/demoPipeline'
 import {
   streamPipeline,
   cancelStream,
   toUiStage,
   type SseEvent,
+  type StreamApplication,
 } from '@/api/stream'
 import {
   ensureBackendReady,
@@ -121,6 +124,8 @@ const frames = ref<SkeletonFrame[]>([])
 const fps = ref(30)
 const gloss = ref<GlossResult | null>(null)
 const agent = ref<AgentResult | null>(null)
+/** 应用层执行信息（application 事件；含 envBefore/envAfter 环境快照，后端落地前为 undefined） */
+const application = ref<StreamApplication | null>(null)
 const activeGloss = ref(-1)
 const playing = ref(true)
 const playerComp = ref<InstanceType<typeof SkeletonCanvas> | null>(null)
@@ -169,6 +174,7 @@ function resetRun() {
   frames.value = []
   gloss.value = null
   agent.value = null
+  application.value = null
   segments.value = []
   numWindows.value = 0
   windows.value = []
@@ -284,6 +290,16 @@ function onSseEvent(e: SseEvent) {
       })
       break
     case 'application':
+      application.value = {
+        apiPath: e.apiPath,
+        taskName: e.taskName,
+        task: e.task,
+        controllerStatus: e.controllerStatus,
+        changes: e.changes,
+        noop: e.noop,
+        envBefore: e.envBefore,
+        envAfter: e.envAfter,
+      }
       pushStage({
         stage: 'executing',
         label: e.noop ? '无需执行（无任务）' : e.taskName,
@@ -684,9 +700,21 @@ onMounted(async () => {
       :agent="agent"
     />
 
+    <!-- 模拟家居环境 JSON 对照（application 事件 envBefore/envAfter；后端未下发时组件内给出诚实提示） -->
+    <EnvDiffPanel
+      v-if="application"
+      :before="application.envBefore ?? null"
+      :after="application.envAfter ?? null"
+      :task="application.task"
+      :status="application.controllerStatus"
+    />
+
     <section v-if="gloss && agent" class="panel panel--final" aria-labelledby="final-title">
       <h2 id="final-title" class="panel__title">最终输出</h2>
-      <p class="final__text">「{{ agent.natural_language }}」</p>
+      <div class="final__row">
+        <p class="final__text">「{{ agent.natural_language }}」</p>
+        <SpeechButton :text="agent.natural_language" />
+      </div>
       <dl class="kv kv--inline">
         <div v-if="gloss.margin_top1_top2?.length">
           <dt>margin_top1_top2</dt>
@@ -1150,8 +1178,16 @@ onMounted(async () => {
   color: var(--color-muted-text, #6b7280);
 }
 
+/* 最终输出：文本 + 播报按钮同行（按钮在文本右侧，需求 1.1） */
+.final__row {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  flex-wrap: wrap;
+}
+
 .final__text {
-  margin: 0 0 0.6rem;
+  margin: 0;
   font-size: 1.1rem;
 }
 
