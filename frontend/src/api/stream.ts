@@ -69,6 +69,10 @@ export interface StreamApplication {
   controllerStatus: string
   changes: StreamEnvChange[]
   noop?: boolean
+  /** 执行前/后环境快照（DialogueState.env JSON）。
+   * 后端改动请求新增字段，落地前为 undefined；前端不得编造。 */
+  envBefore?: Record<string, unknown>
+  envAfter?: Record<string, unknown>
 }
 
 /** 后端逐个下发的事件联合类型（data 内的 type 字段区分） */
@@ -100,6 +104,9 @@ export type SseEvent =
       controllerStatus: string
       changes: StreamEnvChange[]
       noop?: boolean
+      /** 执行前/后环境快照（后端改动请求新增字段，落地前为 undefined） */
+      envBefore?: Record<string, unknown>
+      envAfter?: Record<string, unknown>
     }
   | { type: 'done'; recognition: GlossResult; agent: AgentResult }
   | { type: 'error'; code: number; msg: string }

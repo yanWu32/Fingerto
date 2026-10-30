@@ -21,6 +21,18 @@ const routes: RouteRecordRaw[] = [
     meta: { title: '视频识别' },
   },
   {
+    path: '/push',
+    name: 'push',
+    component: () => import('@/views/PushView.vue'),
+    meta: { title: '信息推送' },
+  },
+  {
+    path: '/log',
+    name: 'audit-log',
+    component: () => import('@/views/AuditLogView.vue'),
+    meta: { title: '审计日志' },
+  },
+  {
     path: '/about',
     name: 'about',
     component: () => import('@/views/AboutView.vue'),

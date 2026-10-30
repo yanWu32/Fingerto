@@ -83,6 +83,12 @@ const props = defineProps<{
           </dd>
         </div>
       </dl>
+
+      <!-- 澄清提示行（固定 UI 文案，非 LLM 输出；仅 clarification=true 时渲染） -->
+      <p v-if="agent.clarification" class="agentout__clarify" role="status">
+        未识别清楚，可以再比一次吗？低置信词：
+        <code v-for="w in agent.low_confidence_words" :key="w" class="tag">{{ w }}</code>
+      </p>
     </div>
   </section>
 </template>
@@ -179,6 +185,21 @@ const props = defineProps<{
 .agentout__text {
   margin: 0 0 0.6rem;
   font-size: 1.05rem;
+}
+
+/* 澄清提示行（固定 UI 文案；低置信词沿用 .tag） */
+.agentout__clarify {
+  margin: 0.6rem 0 0;
+  padding: 0.5rem 0.8rem;
+  border: 1px dashed #d97706;
+  border-radius: 0.5rem;
+  background: #fffbeb;
+  color: #92400e;
+  font-size: 0.9rem;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.3rem;
 }
 
 .kv {
